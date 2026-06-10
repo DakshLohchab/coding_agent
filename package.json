@@ -1,0 +1,9 @@
+{
+  "name": "coding-agent",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun agent.ts",
+    "test": "bun test"
+  }
+}
