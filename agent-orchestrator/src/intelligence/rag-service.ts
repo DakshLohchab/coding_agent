@@ -10,22 +10,50 @@ export class RAGService {
   ) {}
 
   public async retrieveContext(prompt: string): Promise<string> {
-    this.logger.info(`RAG Service: Querying vector store for deeply coupled dependencies...`);
+    this.logger.info(`RAG Service: Querying vector store for Graph-Aware semantic dependencies...`);
     
-    // RAG Pipeline: Search local ChromaDB instance based on semantic proximity to prompt.
-    const results = await this.vectorStore.search(prompt, 5);
+    const results = await this.vectorStore.searchSemantic(prompt, 5);
     
     if (!results || results.length === 0) {
-      return "No deeply coupled context found in the local vector base.";
+      return "<code_graph>\nNo deeply coupled context found in the local vector base.\n</code_graph>";
     }
 
-    let contextData = "=== REPOSITORY INTELLIGENCE CONTEXT ===\n\n";
+    let graphOutput = "<code_graph>\n";
+    const addedClasses = new Set<string>();
+
     for (const res of results) {
-      contextData += `[File: ${res.metadata.filePath}] | [Symbol: ${res.metadata.type} ${res.metadata.name}]\n`;
-      contextData += `${res.text}\n\n`;
+      const nodeId = res.id;
+      const node = this.vectorStore.getNode(nodeId);
+      
+      if (node) {
+        graphOutput += `// === Semantic Node Retrieved: [${node.type}] ${node.name} ===\n`;
+        
+        // Relationship 1: [RequiresImports]
+        if (node.fileImports && node.fileImports.length > 0) {
+          graphOutput += `// Inherited File Imports:\n${node.fileImports.join('\n')}\n\n`;
+        }
+        
+        // Relationship 2: [BelongsToClass]
+        if (node.parentClass && !addedClasses.has(node.parentClass)) {
+          const parentNode = this.vectorStore.getClassOrInterface(node.parentClass);
+          if (parentNode) {
+            graphOutput += `// Structurally Enclosed By [Class/Interface]:\n${parentNode.code}\n\n`;
+            addedClasses.add(node.parentClass);
+          } else {
+            graphOutput += `// Belongs to Class: ${node.parentClass} (Definition not loaded)\n\n`;
+          }
+        }
+        
+        // Root Node Context
+        graphOutput += `// Implementation Chunk:\n${node.code}\n\n`;
+      } else {
+        // Fallback if node not found in memory graph (e.g. restarts)
+        graphOutput += `// === Semantic Chunk: ${res.metadata.name} ===\n${res.text}\n\n`;
+      }
     }
-    contextData += "=======================================";
+    
+    graphOutput += "</code_graph>";
 
-    return contextData;
+    return graphOutput;
   }
 }

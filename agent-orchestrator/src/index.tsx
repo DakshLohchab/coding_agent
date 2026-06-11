@@ -9,6 +9,7 @@ import { FileWatcherDaemon } from './intelligence/file-watcher';
 import { VectorStore } from './intelligence/vector-store';
 import { IOLayer } from './daemon/io-layer';
 import { CollisionDetector } from './daemon/collision-detector';
+import { EventBroker } from './services/event-broker';
 import { OrchestratorUI } from './ui/ink-app';
 
 const logger = container.resolve<ILogger>('ILogger');
@@ -16,19 +17,23 @@ const fileWatcher = container.resolve(FileWatcherDaemon);
 const vectorStore = container.resolve(VectorStore);
 const ioLayer = container.resolve(IOLayer);
 const collisionDetector = container.resolve(CollisionDetector);
+const eventBroker = container.resolve(EventBroker);
 
 async function bootstrap() {
   // Initialize Intelligence & Daemon Layers
   await vectorStore.initialize();
-  fileWatcher.start(process.cwd() + '/src');
+  
+  // Watch the current directory wherever the user invokes 'ca2026'
+  const workingDir = process.cwd();
+  fileWatcher.start(workingDir);
   
   ioLayer.initialize(8080);
-  collisionDetector.start(process.cwd() + '/src');
+  collisionDetector.start(workingDir);
 
   const actor = createActor(orchestratorMachine);
 
-  // Render the Ink React UI
-  render(React.createElement(OrchestratorUI, { ioLayer, collisionDetector, actor }));
+  // Render the Ink React UI with decoupled async broker
+  render(React.createElement(OrchestratorUI, { ioLayer, collisionDetector, eventBroker, actor }));
 
   actor.start();
   

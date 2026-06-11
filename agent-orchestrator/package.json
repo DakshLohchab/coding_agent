@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "ts-node src/index.tsx"
   },
   "keywords": [],
   "author": "",
@@ -12,7 +13,7 @@
   "dependencies": {
     "chokidar": "^3.6.0",
     "chromadb": "^3.4.3",
-    "ink": "^7.0.5",
+    "ink": "^6.8.0",
     "react": "^19.2.7",
     "reflect-metadata": "^0.2.2",
     "tree-sitter": "^0.21.1",
@@ -27,5 +28,8 @@
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
+  },
+  "bin": {
+    "ca2026": "bin/ca2026.js"
   }
 }

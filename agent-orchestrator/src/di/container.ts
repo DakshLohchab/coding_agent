@@ -18,9 +18,11 @@ import { AtomicGitTool } from '../execution/tools/atomic-git';
 
 import { IOLayer } from '../daemon/io-layer';
 import { CollisionDetector } from '../daemon/collision-detector';
+import { EventBroker } from '../services/event-broker';
 
 // Core Services
 container.registerSingleton('ILogger', Logger);
+container.registerSingleton(EventBroker);
 
 // Daemon Layer
 container.registerSingleton(IOLayer);

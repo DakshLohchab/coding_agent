@@ -5,15 +5,19 @@ const Parser = require('tree-sitter');
 const tsGrammar = require('tree-sitter-typescript').typescript;
 
 export interface ASTNodeData {
-  type: 'class' | 'method' | 'import' | 'export';
+  id: string;
+  type: 'class' | 'method' | 'function' | 'import' | 'export' | 'interface';
   name: string;
   code: string;
   startLine: number;
   endLine: number;
+  parentClass?: string;
+  fileImports?: string[];
 }
 
 export interface ParsedFile {
   filePath: string;
+  imports: string[];
   nodes: ASTNodeData[];
 }
 
@@ -30,33 +34,55 @@ export class ASTParser {
     const code = fs.readFileSync(filePath, 'utf8');
     const tree = this.parser.parse(code);
     const nodes: ASTNodeData[] = [];
+    const imports: string[] = [];
 
-    // Simple tree traversal to extract classes, methods, imports, and exports
-    const traverse = (node: any) => {
-      if (node.type === 'class_declaration') {
+    // Pre-collect top-level imports for graph linking
+    const collectImports = (node: any) => {
+      if (node.type === 'import_statement') {
+        imports.push(node.text);
+      }
+      for (const child of node.namedChildren) {
+        collectImports(child);
+      }
+    };
+    collectImports(tree.rootNode);
+
+    // Context-aware DFS traversal
+    const traverse = (node: any, currentClass?: string) => {
+      let nextClass = currentClass;
+
+      if (node.type === 'class_declaration' || node.type === 'interface_declaration') {
         const nameNode = node.childForFieldName('name');
         if (nameNode) {
+          nextClass = nameNode.text;
           nodes.push({
-            type: 'class',
-            name: nameNode.text,
+            id: `${filePath}_${node.type}_${nextClass}`,
+            type: node.type === 'class_declaration' ? 'class' : 'interface',
+            name: nextClass,
             code: node.text,
             startLine: node.startPosition.row,
             endLine: node.endPosition.row,
+            fileImports: imports // Attach global file scopes to the class
           });
         }
-      } else if (node.type === 'method_definition') {
+      } else if (node.type === 'method_definition' || node.type === 'function_declaration') {
         const nameNode = node.childForFieldName('name');
         if (nameNode) {
+          const type = node.type === 'method_definition' ? 'method' : 'function';
           nodes.push({
-            type: 'method',
+            id: `${filePath}_${type}_${currentClass ? currentClass + '_' : ''}${nameNode.text}`,
+            type: type,
             name: nameNode.text,
             code: node.text,
             startLine: node.startPosition.row,
             endLine: node.endPosition.row,
+            parentClass: currentClass, // Graph relationship: BelongsToClass
+            fileImports: imports       // Graph relationship: RequiresImports
           });
         }
       } else if (node.type === 'import_statement') {
         nodes.push({
+          id: `${filePath}_import_${node.startPosition.row}`,
           type: 'import',
           name: 'import',
           code: node.text,
@@ -65,6 +91,7 @@ export class ASTParser {
         });
       } else if (node.type === 'export_statement') {
         nodes.push({
+          id: `${filePath}_export_${node.startPosition.row}`,
           type: 'export',
           name: 'export',
           code: node.text,
@@ -74,12 +101,12 @@ export class ASTParser {
       }
 
       for (const child of node.namedChildren) {
-        traverse(child);
+        traverse(child, nextClass);
       }
     };
 
     traverse(tree.rootNode);
 
-    return { filePath, nodes };
+    return { filePath, imports, nodes };
   }
 }

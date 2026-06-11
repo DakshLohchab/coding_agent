@@ -5,6 +5,8 @@ export interface AgentContext {
   verificationLogs: string | null;
   compilationFailures: number;
   error: Error | null;
+  executionHistory: string[];
+  historyTokenCount: number;
 }
 
 export type AgentEvent =

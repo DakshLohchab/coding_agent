@@ -1,7 +1,18 @@
 import { injectable, inject } from 'tsyringe';
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ITool, JSONSchema } from '../tool-registry';
 import { ILogger } from '../../agents/interfaces';
+
+export interface ExtractedError {
+  file: string;
+  line: number;
+  column: number;
+  message: string;
+  contextSnippet: string;
+  sourceLine: string;
+}
 
 @injectable()
 export class NativeShellTool implements ITool {
@@ -22,7 +33,6 @@ export class NativeShellTool implements ITool {
   public async execute(args: { script: string, background?: boolean }): Promise<any> {
     this.logger.info(`NativeShell executing command via PowerShell...`);
     
-    // Deep PowerShell automation execution context
     const process = spawn('powershell.exe', [
       '-NoProfile', 
       '-NonInteractive', 
@@ -32,7 +42,7 @@ export class NativeShellTool implements ITool {
 
     if (args.background) {
       this.logger.info(`Spawned detached background process with PID: ${process.pid}`);
-      process.unref(); // Detach the process from the parent Node event loop
+      process.unref(); 
       return { status: 'background', pid: process.pid };
     }
 
@@ -45,12 +55,12 @@ export class NativeShellTool implements ITool {
 
       process.on('close', (code) => {
         if (code !== 0) {
-          this.logger.warn(`NativeShell command failed with code ${code}.`);
-          // We resolve instead of reject so the Verification Agent can parse the error logs contextually
-          resolve({ success: false, code, stdout, stderr });
+          this.logger.warn(`NativeShell command failed with code ${code}. Extracting stack traces...`);
+          const extractedErrors = this.extractStackTraces(stderr || stdout);
+          resolve({ success: false, code, stdout, stderr, extractedErrors, command: args.script });
         } else {
           this.logger.info(`NativeShell command executed successfully.`);
-          resolve({ success: true, code, stdout, stderr });
+          resolve({ success: true, code, stdout, stderr, command: args.script });
         }
       });
 
@@ -62,9 +72,53 @@ export class NativeShellTool implements ITool {
   }
 
   /**
-   * Specifically handles complex OS automation tasks, like port-killing capabilities.
-   * Useful for freeing up blocked localhost ports before starting a dev server.
+   * Deterministic regex parser that detects standard compiler and test runtime error formats
+   * Fetches the exact line of code that threw the error, along with 5 lines of context above and below it.
    */
+  private extractStackTraces(logOutput: string): ExtractedError[] {
+    const errors: ExtractedError[] = [];
+    
+    // Matches "file.ts:line:column - error message" OR "at function (file:line:col)"
+    const regex = /(?:([a-zA-Z0-9_\-\\\/\.]+):(\d+):(\d+)(.*))|(?:at .* \(([a-zA-Z0-9_\-\\\/\.]+):(\d+):(\d+)\))/g;
+    
+    let match;
+    while ((match = regex.exec(logOutput)) !== null) {
+      const file = match[1] || match[5];
+      const line = parseInt(match[2] || match[6], 10);
+      const column = parseInt(match[3] || match[7], 10);
+      const message = (match[4] || '').trim();
+
+      try {
+        const absolutePath = path.resolve(process.cwd(), file);
+        if (fs.existsSync(absolutePath)) {
+          const content = fs.readFileSync(absolutePath, 'utf8').split('\n');
+          const zeroLine = line - 1;
+          
+          // Grab exact line + 5 lines above and below
+          const startLine = Math.max(0, zeroLine - 5);
+          const endLine = Math.min(content.length - 1, zeroLine + 5);
+          
+          const snippet = content.slice(startLine, endLine + 1)
+            .map((l, idx) => `${startLine + idx + 1}: ${l}`)
+            .join('\n');
+          
+          errors.push({
+            file: absolutePath,
+            line,
+            column,
+            message: message || "Runtime Exception",
+            sourceLine: content[zeroLine] || "",
+            contextSnippet: snippet
+          });
+        }
+      } catch (e) {
+        // Safe fail if file unreadable, just skip context
+      }
+    }
+    
+    return errors;
+  }
+
   public async killPort(port: number): Promise<any> {
     const script = `
       $pidToKill = (Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue).OwningProcess

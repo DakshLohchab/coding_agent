@@ -1,32 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 
-export const OrchestratorUI = ({ ioLayer, collisionDetector, actor }: any) => {
+export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor }: any) => {
   const [stateValue, setStateValue] = useState('idle');
   const [collision, setCollision] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Subscribe to State Machine updates
-    const sub = actor.subscribe((state: any) => {
-      setStateValue(state.value);
-    });
+    // 1. Subscribe to asynchronous, non-blocking EventBroker
+    const handleStateChange = (state: string) => {
+      setStateValue(state);
+    };
+    eventBroker.on('agent.state_change', handleStateChange);
 
     // 2. Active Collision Watcher Integration
-    collisionDetector.on('collision', (path: string) => {
+    const handleCollision = (path: string) => {
       setCollision(path);
       actor.send({ type: 'PAUSE_FOR_COLLISION', path });
-    });
+    };
+    collisionDetector.on('collision', handleCollision);
 
     // 3. I/O Input handling
-    ioLayer.on('input', (msg: any) => {
+    const handleIO = (msg: any) => {
       if (msg.type === 'collision_resolution') {
         setCollision(null);
         actor.send({ type: 'RESUME_FROM_COLLISION', resolution: msg.payload });
       }
-    });
+    };
+    ioLayer.on('input', handleIO);
 
-    return () => sub.unsubscribe();
-  }, [actor, collisionDetector, ioLayer]);
+    return () => {
+      eventBroker.off('agent.state_change', handleStateChange);
+      collisionDetector.off('collision', handleCollision);
+      ioLayer.off('input', handleIO);
+    };
+  }, [eventBroker, collisionDetector, ioLayer, actor]);
 
   return (
     <Box flexDirection="column" padding={1}>
