@@ -1,129 +1,123 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import TextInput from 'ink-text-input';
+import Spinner from 'ink-spinner';
 
-const AVAILABLE_MODELS = ['openrouter', 'gemini', 'gpt', 'fireworks'];
-
-export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor }: any) => {
+export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const [stateValue, setStateValue] = useState('idle');
-  const [collision, setCollision] = useState<string | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('openrouter');
+  const [chatLog, setChatLog] = useState<{ role: string, text: string, summary?: any }[]>([]);
   const [chatInput, setChatInput] = useState('');
-  const [chatLog, setChatLog] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [lastAgentMessage, setLastAgentMessage] = useState<string>('Waiting for your prompt...');
+  const [currentThought, setCurrentThought] = useState('');
 
   useEffect(() => {
     const handleStateChange = (state: string) => {
       setStateValue(state);
+      if (state === 'idle' || state === 'done' || state === 'failed') {
+        setIsSubmitting(false);
+        setCurrentThought('');
+      }
     };
     eventBroker.on('agent.state_change', handleStateChange);
 
-    const handleAudioListening = (listening: boolean) => {
-      setIsListening(listening);
-    };
-    eventBroker.on('audio.listening', handleAudioListening);
-
-    const handleCollision = (path: string) => {
-      setCollision(path);
-      actor.send({ type: 'PAUSE_FOR_COLLISION', path });
-    };
-    collisionDetector.on('collision', handleCollision);
-
-    const handleIO = (msg: any) => {
-      if (msg.type === 'collision_resolution') {
-        setCollision(null);
-        actor.send({ type: 'RESUME_FROM_COLLISION', resolution: msg.payload });
-      } else if (msg.type === 'prompt') {
-        setChatLog((log) => [...log, `User: ${msg.payload}`]);
-        setIsSubmitting(true);
-        actor.send({ type: 'START', prompt: msg.payload, model: selectedModel });
-      }
-    };
-
     const handleReply = (message: string) => {
-      setChatLog((log) => [...log, `Agent: ${message}`]);
-      setLastAgentMessage(message);
-      setIsSubmitting(false);
+      setChatLog((log) => [...log, { role: 'agent', text: message }]);
     };
     eventBroker.on('agent.reply', handleReply);
-    ioLayer.on('input', handleIO);
+
+    const handleThought = (thought: string) => {
+      setCurrentThought(thought);
+    };
+    eventBroker.on('agent.thought', handleThought);
+
+    const handleSummary = (summaryData: any) => {
+      setChatLog((log) => [...log, { role: 'system', text: 'Summary Report Generated', summary: summaryData }]);
+    };
+    eventBroker.on('agent.summary', handleSummary);
 
     return () => {
       eventBroker.off('agent.state_change', handleStateChange);
-      eventBroker.off('audio.listening', handleAudioListening);
-      collisionDetector.off('collision', handleCollision);
-      ioLayer.off('input', handleIO);
       eventBroker.off('agent.reply', handleReply);
+      eventBroker.off('agent.thought', handleThought);
+      eventBroker.off('agent.summary', handleSummary);
     };
-  }, [eventBroker, collisionDetector, ioLayer, actor, selectedModel]);
+  }, [eventBroker]);
 
-  useInput((input, key) => {
-    if (key.return) {
-      if (chatInput.trim().length > 0 && !isSubmitting) {
-        const prompt = chatInput.trim();
-        setChatLog((log) => [...log, `User: ${prompt}`]);
-        setIsSubmitting(true);
-        setLastAgentMessage('Submitting prompt to the orchestrator...');
-        actor.send({ type: 'START', prompt, model: selectedModel });
-        setChatInput('');
-      }
-    } else if (key.upArrow) {
-      const currentIndex = AVAILABLE_MODELS.indexOf(selectedModel);
-      setSelectedModel(AVAILABLE_MODELS[(currentIndex + AVAILABLE_MODELS.length - 1) % AVAILABLE_MODELS.length]);
-    } else if (key.downArrow) {
-      const currentIndex = AVAILABLE_MODELS.indexOf(selectedModel);
-      setSelectedModel(AVAILABLE_MODELS[(currentIndex + 1) % AVAILABLE_MODELS.length]);
-    } else if (key.backspace || key.delete) {
-      setChatInput((prev) => prev.slice(0, -1));
-    } else if (input) {
-      setChatInput((prev) => prev + input);
+  const handleSubmit = (query: string) => {
+    if (query.trim().length > 0 && !isSubmitting) {
+      setChatLog((log) => [...log, { role: 'user', text: query.trim() }]);
+      setIsSubmitting(true);
+      setChatInput('');
+      actor.send({ type: 'START', prompt: query.trim() });
     }
-  });
+  };
+
+  const getStatusText = () => {
+    switch (stateValue) {
+      case 'idle': return <Text color="gray">Idle</Text>;
+      case 'architecting': return <Text color="blue">⚙️ Architecting...</Text>;
+      case 'executing': return <Text color="cyan">💻 Executing code diffs...</Text>;
+      case 'verifying': return <Text color="yellow">🔬 Verifying code...</Text>;
+      case 'debating': return <Text color="magenta">🗣️ Debating plan...</Text>;
+      case 'done': return <Text color="green">✅ Success</Text>;
+      case 'failed': return <Text color="red">❌ Failed</Text>;
+      default: return <Text color="white">{stateValue}</Text>;
+    }
+  };
 
   return (
-    <Box flexDirection="column" padding={1}>
-      <Box borderStyle="round" borderColor="cyan" padding={1} flexDirection="column">
-        <Text bold color="cyan">Agent Orchestrator Daemon</Text>
-        <Text>Status: <Text color={stateValue === 'idle' ? 'gray' : 'green'}>{stateValue.toUpperCase()}</Text></Text>
-        <Text>LLM Model: <Text color="yellow">{selectedModel}</Text> <Text color="gray">(Use ↑/↓ to switch)</Text></Text>
-        <Text>Chat Prompt: <Text color="gray">Type and press Enter to submit</Text></Text>
-        <Text>{chatInput || <Text color="gray">Type your prompt here...</Text>}</Text>
+    <Box flexDirection="column" minHeight={15} borderStyle="round" borderColor="cyan" padding={1}>
+      {/* Top Panel: History */}
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        <Text bold color="magenta">Chat Canvas</Text>
+        <Box flexDirection="column" marginTop={1}>
+          {chatLog.slice(-10).map((msg, index) => {
+            if (msg.role === 'system' && msg.summary) {
+              return (
+                <Box key={index} borderStyle="round" borderColor="green" padding={1} flexDirection="column" marginTop={1} marginBottom={1}>
+                  <Text bold color="green">📊 Execution Summary</Text>
+                  <Text>Files Modified: {msg.summary.filesModified}</Text>
+                  <Text>Commands Executed: {msg.summary.commandsExecuted}</Text>
+                  <Text>Retries/Failures Resolved: {msg.summary.retriesResolved}</Text>
+                </Box>
+              );
+            }
+            return (
+              <Text key={index}>
+                <Text bold color={msg.role === 'user' ? 'green' : 'cyan'}>
+                  {msg.role === 'user' ? 'You: ' : 'Agent: '}
+                </Text>
+                {msg.text}
+              </Text>
+            );
+          })}
+          {chatLog.length === 0 && <Text color="gray">No history yet...</Text>}
+        </Box>
+      </Box>
 
-        {isListening && (
+      {/* Middle Panel: Live Status */}
+      <Box borderStyle="single" borderColor="gray" padding={1} marginTop={1} marginBottom={1} flexDirection="column">
+        <Box flexDirection="row">
+          <Text bold>Status: </Text>
+          {isSubmitting && <Text color="green"><Spinner type="dots" /> </Text>}
+          {getStatusText()}
+        </Box>
+        {currentThought && stateValue !== 'idle' && stateValue !== 'done' && (
           <Box marginTop={1}>
-            <Text bold color="greenBright">🎙️ Listening... (Receiving PCM Audio Stream)</Text>
-          </Box>
-        )}
-
-        {collision && (
-          <Box marginTop={1} padding={1} borderStyle="single" borderColor="red" flexDirection="column">
-            <Text bold color="red">⚠️ IDE COLLISION DETECTED</Text>
-            <Text color="yellow">User manually modified: {collision}</Text>
-            <Text>State Machine paused. Awaiting I/O resolution...</Text>
+            <Text dimColor italic color="gray">💭 {currentThought}</Text>
           </Box>
         )}
       </Box>
 
-      <Box marginTop={1} flexDirection="column">
-        <Text bold>Parallel Execution Pipelines:</Text>
-        <Text>Architect Agent: {stateValue === 'architecting' ? <Text color="blue">Running...</Text> : 'Idle'}</Text>
-        <Text>Execution Agent: {stateValue === 'executing' ? <Text color="blue">Running...</Text> : 'Idle'}</Text>
-        <Text>Verification Agent: {stateValue === 'verifying' ? <Text color="blue">Running...</Text> : 'Idle'}</Text>
-        <Text>Debate Agent: {stateValue === 'debating' ? <Text color="magenta">Debating...</Text> : 'Idle'}</Text>
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        <Text bold color="magenta">Conversation</Text>
-        {chatLog.slice(-6).map((line, index) => (
-          <Text key={index}>{line}</Text>
-        ))}
-        <Text color="gray">{lastAgentMessage}</Text>
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        <Text bold color="magenta">Intelligence Layer Interfaces:</Text>
-        <Text color="gray">AST VectorStore [Online] | WebSockets [Port 8080] | Audio Pipeline [Online]</Text>
+      {/* Bottom Panel: Input */}
+      <Box flexDirection="row">
+        <Text bold color="greenBright">❯ </Text>
+        <TextInput
+          value={chatInput}
+          onChange={setChatInput}
+          onSubmit={handleSubmit}
+          placeholder="Type your prompt here and press Enter..."
+        />
       </Box>
     </Box>
   );

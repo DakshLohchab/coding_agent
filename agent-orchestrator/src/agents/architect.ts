@@ -3,17 +3,22 @@ import { IArchitectAgent, ILogger } from './interfaces';
 import { AgentContext } from '../types';
 import { RAGService } from '../intelligence/rag-service';
 import { ToolRegistry } from '../execution/tool-registry';
+import { ConfigService } from '../services/config';
+import { EventBroker } from '../services/event-broker';
 
 @injectable()
 export class ArchitectAgent implements IArchitectAgent {
   constructor(
     @inject('ILogger') private logger: ILogger,
     @inject(RAGService) private ragService: RAGService,
-    @inject(ToolRegistry) private toolRegistry: ToolRegistry
+    @inject(ToolRegistry) private toolRegistry: ToolRegistry,
+    @inject(ConfigService) private configService: ConfigService,
+    @inject(EventBroker) private eventBroker: EventBroker
   ) {}
 
   async analyzeAndPlan(context: AgentContext): Promise<string> {
-    this.logger.info('Architect Agent: Analyzing prompt and repository structure...');
+    const config = this.configService.getConfig();
+    this.logger.info(`Architect Agent: Analyzing prompt and repository structure using LLM Provider [${config?.provider}]...`);
     
     // RAG Pipeline: Pull deeply coupled dependencies into context
     const ragContext = await this.ragService.retrieveContext(context.prompt);
@@ -40,6 +45,13 @@ export class ArchitectAgent implements IArchitectAgent {
       // Inject OpenAI/Anthropic 'tools' JSON schema payload into the request
       const llmResponse = await this.mockLLMCall(messages, toolsSchema, iteration);
 
+      if (llmResponse.content) {
+        const introspectionMatch = llmResponse.content.match(/<introspection>([\s\S]*?)<\/introspection>/);
+        if (introspectionMatch) {
+          this.eventBroker.emitAsync('agent.thought', introspectionMatch[1].trim());
+        }
+      }
+
       if (llmResponse.tool_calls && llmResponse.tool_calls.length > 0) {
         this.logger.info(`Architect Agent: LLM requested tool invocation. Pausing generation stream...`);
         
@@ -49,6 +61,12 @@ export class ArchitectAgent implements IArchitectAgent {
         for (const toolCall of llmResponse.tool_calls) {
           const { name, arguments: args } = toolCall.function;
           this.logger.info(`Architect Agent: Routing tool '${name}' via ToolRegistry...`);
+          
+          if (name === 'native_shell') {
+            this.eventBroker.emitAsync('agent.thought', `Running command: ${JSON.parse(args).script}`);
+          } else {
+            this.eventBroker.emitAsync('agent.thought', `Executing tool: ${name}`);
+          }
           
           try {
             const parsedArgs = JSON.parse(args);

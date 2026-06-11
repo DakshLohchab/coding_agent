@@ -105,7 +105,8 @@ export const orchestratorMachine = setup({
     error: null,
     executionHistory: [],
     historyTokenCount: 0,
-    lastAgentMessage: null
+    lastAgentMessage: null,
+    totalRetries: 0
   },
   states: {
     idle: {
@@ -217,6 +218,7 @@ export const orchestratorMachine = setup({
               assign({
                 verificationLogs: ({ event }) => (event.output as any).logs,
                 compilationFailures: ({ context }) => context.compilationFailures + 1,
+                totalRetries: ({ context }) => (context.totalRetries || 0) + 1,
                 executionHistory: ({ context, event }) => [
                   ...context.executionHistory, 
                   `[VERIFIER] Verification Failed. Routing back to Executor. Logs: ${(event.output as any).logs}`
@@ -258,6 +260,17 @@ export const orchestratorMachine = setup({
     done: {
       entry: [
         'logSuccess',
+        ({ context }) => {
+          const filesModified = context.codeDiff ? (context.codeDiff.match(/<file path=/g) || []).length : 0;
+          const retriesResolved = context.totalRetries || 0;
+          const commandsExecuted = 2 + retriesResolved;
+          
+          getEventBroker().emitAsync('agent.summary', {
+            filesModified,
+            commandsExecuted,
+            retriesResolved
+          });
+        },
         () => getEventBroker().emitAsync('agent.state_change', 'done'),
         () => getEventBroker().emitAsync('agent.reply', 'Orchestration finished successfully. The agent has completed the task.')
       ],

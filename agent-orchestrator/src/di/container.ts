@@ -21,11 +21,13 @@ import { IOLayer } from '../daemon/io-layer';
 import { CollisionDetector } from '../daemon/collision-detector';
 import { EventBroker } from '../services/event-broker';
 import { ContextCompressor } from '../services/context-compressor';
+import { ConfigService } from '../services/config';
 
 // Core Services
 container.registerSingleton('ILogger', Logger);
 container.registerSingleton(EventBroker);
 container.registerSingleton(ContextCompressor);
+container.registerSingleton(ConfigService);
 
 // Daemon Layer
 container.registerSingleton(IOLayer);

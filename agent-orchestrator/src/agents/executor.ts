@@ -3,6 +3,8 @@ import { IExecutionAgent, ILogger } from './interfaces';
 import { AgentContext } from '../types';
 import { ASTParser } from '../intelligence/ast-parser';
 import { ToolRegistry } from '../execution/tool-registry';
+import { ConfigService } from '../services/config';
+import { EventBroker } from '../services/event-broker';
 
 export interface VirtualFile {
   path: string;
@@ -14,11 +16,14 @@ export class ExecutionAgent implements IExecutionAgent {
   constructor(
     @inject('ILogger') private logger: ILogger,
     @inject(ASTParser) private astParser: ASTParser,
-    @inject(ToolRegistry) private toolRegistry: ToolRegistry
+    @inject(ToolRegistry) private toolRegistry: ToolRegistry,
+    @inject(ConfigService) private configService: ConfigService,
+    @inject(EventBroker) private eventBroker: EventBroker
   ) {}
 
   async generateCodeDiff(context: AgentContext): Promise<string> {
-    this.logger.info(`Execution Agent: Generating structured multi-file blocks (Attempt ${context.compilationFailures + 1})...`);
+    const config = this.configService.getConfig();
+    this.logger.info(`Execution Agent: Generating structured multi-file blocks (Attempt ${context.compilationFailures + 1}) using [${config?.provider}]...`);
     if (!context.plan) throw new Error('No plan provided to Execution Agent.');
 
     const messages: any[] = [
@@ -38,6 +43,13 @@ export class ExecutionAgent implements IExecutionAgent {
       iteration++;
       const llmResponse = await this.mockLLMCall(messages, toolsSchema, iteration);
 
+      if (llmResponse.content) {
+        const introspectionMatch = llmResponse.content.match(/<introspection>([\s\S]*?)<\/introspection>/);
+        if (introspectionMatch) {
+          this.eventBroker.emitAsync('agent.thought', introspectionMatch[1].trim());
+        }
+      }
+
       if (llmResponse.tool_calls && llmResponse.tool_calls.length > 0) {
         this.logger.info(`Execution Agent: LLM requested tool invocation. Pausing generation stream...`);
         messages.push({ role: 'assistant', tool_calls: llmResponse.tool_calls });
@@ -45,6 +57,12 @@ export class ExecutionAgent implements IExecutionAgent {
         for (const toolCall of llmResponse.tool_calls) {
           const { name, arguments: args } = toolCall.function;
           this.logger.info(`Execution Agent: Routing tool '${name}' via ToolRegistry...`);
+          
+          if (name === 'native_shell') {
+            this.eventBroker.emitAsync('agent.thought', `Running command: ${JSON.parse(args).script}`);
+          } else {
+            this.eventBroker.emitAsync('agent.thought', `Executing tool: ${name}`);
+          }
           
           try {
             const parsedArgs = JSON.parse(args);

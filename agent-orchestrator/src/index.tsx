@@ -11,6 +11,7 @@ import { IOLayer } from './daemon/io-layer';
 import { CollisionDetector } from './daemon/collision-detector';
 import { EventBroker } from './services/event-broker';
 import { OrchestratorUI } from './ui/ink-app';
+import { ConfigService } from './services/config';
 
 async function bootstrap() {
   // 1. Move ALL container resolutions INSIDE the async function to prevent module race conditions
@@ -39,18 +40,20 @@ async function bootstrap() {
 
     actor.start();
 
-    const args = process.argv.slice(2);
-    if (args.length > 0) {
-      const prompt = args.join(' ');
-      actor.send({ type: 'START', prompt, model: 'openrouter' });
-    }
-
   } catch (err) {
     logger.error('Bootstrap runtime error', err);
   }
 }
 
-// Top-level catch uses native console since logger is now locally scoped
-bootstrap().catch(err => {
+// Top-level execution runs the config wizard if necessary
+async function main() {
+  const configService = container.resolve(ConfigService);
+  if (!configService.hasValidConfig()) {
+    await configService.runWizard();
+  }
+  await bootstrap();
+}
+
+main().catch(err => {
   console.error('Fatal Bootstrap error', err);
 });
