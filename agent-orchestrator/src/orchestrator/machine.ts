@@ -7,14 +7,14 @@ import { ContextCompressor } from '../services/context-compressor';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 
-// Resolve dependencies from DI
-const architect = container.resolve<IArchitectAgent>('IArchitectAgent');
-const executor = container.resolve<IExecutionAgent>('IExecutionAgent');
-const verifier = container.resolve<IVerificationAgent>('IVerificationAgent');
-const debateAgent = container.resolve<IDebateAgent>('IDebateAgent');
-const logger = container.resolve<ILogger>('ILogger');
-const eventBroker = container.resolve(EventBroker);
-const compressor = container.resolve(ContextCompressor);
+// 1. Convert eager resolutions to Lazy Getters to prevent Tsyringe module race conditions
+const getArchitect = () => container.resolve<IArchitectAgent>('IArchitectAgent');
+const getExecutor = () => container.resolve<IExecutionAgent>('IExecutionAgent');
+const getVerifier = () => container.resolve<IVerificationAgent>('IVerificationAgent');
+const getDebateAgent = () => container.resolve<IDebateAgent>('IDebateAgent');
+const getLogger = () => container.resolve<ILogger>('ILogger');
+const getEventBroker = () => container.resolve(EventBroker);
+const getCompressor = () => container.resolve(ContextCompressor);
 
 export const orchestratorMachine = setup({
   types: {
@@ -22,34 +22,36 @@ export const orchestratorMachine = setup({
     events: {} as AgentEvent,
   },
   actors: {
+    // 2. Resolve them safely inside the async actors
     architectActor: fromPromise(async ({ input }: { input: AgentContext }) => {
-      return await architect.analyzeAndPlan(input);
+      return await getArchitect().analyzeAndPlan(input);
     }),
     executorActor: fromPromise(async ({ input }: { input: AgentContext }) => {
-      return await executor.generateCodeDiff(input);
+      return await getExecutor().generateCodeDiff(input);
     }),
     verifierActor: fromPromise(async ({ input }: { input: AgentContext }) => {
-      return await verifier.verify(input);
+      return await getVerifier().verify(input);
     }),
     debateActor: fromPromise(async ({ input }: { input: AgentContext }) => {
-      return await debateAgent.debateAndConverge(input);
+      return await getDebateAgent().debateAndConverge(input);
     })
   },
   actions: {
+    // 3. Update all actions to use the lazy getters
     logError: ({ event }) => {
-      logger.error('State Machine FATAL ERROR', event);
+      getLogger().error('State Machine FATAL ERROR', event);
     },
     logSuccess: () => {
-      logger.info('State Machine completed orchestration successfully.');
+      getLogger().info('State Machine completed orchestration successfully.');
     },
     setupWorktree: () => {
       if (!fs.existsSync('.agent-workspace')) {
         try {
           try { execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' }); } catch (e) {}
           execSync('git worktree add .agent-workspace -f', { stdio: 'ignore' });
-          logger.info('Created isolated git worktree at .agent-workspace');
+          getLogger().info('Created isolated git worktree at .agent-workspace');
         } catch (e: any) {
-          logger.error(`Failed to setup worktree: ${e.message}`);
+          getLogger().error(`Failed to setup worktree: ${e.message}`);
         }
       }
     },
@@ -63,21 +65,21 @@ export const orchestratorMachine = setup({
           fs.unlinkSync('patch.diff');
         }
         execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
-        logger.info('Successfully merged worktree patch and cleaned up.');
+        getLogger().info('Successfully merged worktree patch and cleaned up.');
       } catch (e: any) {
-        logger.error(`Failed to merge worktree patch: ${e.message}`);
+        getLogger().error(`Failed to merge worktree patch: ${e.message}`);
       }
     },
     removeWorktree: () => {
       try {
         execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
-        logger.info('Cleaned up failed .agent-workspace worktree.');
+        getLogger().info('Cleaned up failed .agent-workspace worktree.');
       } catch (e) {}
     },
     compressHistoryIfNeeded: assign(({ context }) => {
-      const result = compressor.compressIfNeeded(context.executionHistory);
+      const result = getCompressor().compressIfNeeded(context.executionHistory);
       if (result.compressed) {
-        logger.warn(`Token budget exceeded. ContextCompressor triggered sliding-window eviction.`);
+        getLogger().warn(`Token budget exceeded. ContextCompressor triggered sliding-window eviction.`);
       }
       return {
         executionHistory: result.newHistory,
@@ -100,7 +102,8 @@ export const orchestratorMachine = setup({
   },
   states: {
     idle: {
-      entry: [() => eventBroker.emitAsync('agent.state_change', 'idle')],
+      // 4. Also use the getter for the EventBroker in the entry states
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'idle')],
       on: {
         START: {
           target: 'architecting',
@@ -114,7 +117,7 @@ export const orchestratorMachine = setup({
       }
     },
     architecting: {
-      entry: [() => eventBroker.emitAsync('agent.state_change', 'architecting')],
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'architecting')],
       invoke: {
         src: 'architectActor',
         input: ({ context }) => context,
@@ -136,7 +139,7 @@ export const orchestratorMachine = setup({
     },
     executing: {
       entry: [
-        () => eventBroker.emitAsync('agent.state_change', 'executing'),
+        () => getEventBroker().emitAsync('agent.state_change', 'executing'),
         'setupWorktree'
       ],
       invoke: {
@@ -159,7 +162,7 @@ export const orchestratorMachine = setup({
       }
     },
     verifying: {
-      entry: [() => eventBroker.emitAsync('agent.state_change', 'verifying')],
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'verifying')],
       invoke: {
         src: 'verifierActor',
         input: ({ context }) => context,
@@ -177,14 +180,13 @@ export const orchestratorMachine = setup({
             ]
           },
           {
-            // If Execution Agent fails to compile code 3 times, route to Multi-Agent Debate
             guard: ({ context }) => context.compilationFailures >= 2,
             target: 'debating',
             actions: [
               'removeWorktree',
               assign({
                 verificationLogs: ({ event }) => (event.output as any).logs,
-                compilationFailures: 0, // Reset failures for complete re-evaluation
+                compilationFailures: 0, 
                 executionHistory: ({ context, event }) => [
                   ...context.executionHistory, 
                   `[VERIFIER] Critical Error (Attempt 3). Triggering Multi-Agent Debate.\nLogs: ${(event.output as any).logs}`
@@ -194,7 +196,6 @@ export const orchestratorMachine = setup({
             ]
           },
           {
-            // Retry execution loop (1st and 2nd failure)
             target: 'executing',
             actions: [
               assign({
@@ -216,7 +217,7 @@ export const orchestratorMachine = setup({
       }
     },
     debating: {
-      entry: [() => eventBroker.emitAsync('agent.state_change', 'debating')],
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'debating')],
       invoke: {
         src: 'debateActor',
         input: ({ context }) => context,
@@ -237,15 +238,15 @@ export const orchestratorMachine = setup({
       }
     },
     done: {
-      entry: ['logSuccess', () => eventBroker.emitAsync('agent.state_change', 'done')],
+      entry: ['logSuccess', () => getEventBroker().emitAsync('agent.state_change', 'done')],
       type: 'final'
     },
     failed: {
-      entry: ['logError', () => eventBroker.emitAsync('agent.state_change', 'failed')],
+      entry: ['logError', () => getEventBroker().emitAsync('agent.state_change', 'failed')],
       type: 'final'
     },
     paused: {
-      entry: [() => eventBroker.emitAsync('agent.state_change', 'paused')],
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'paused')],
       on: {
         RESUME_FROM_COLLISION: {
           target: 'architecting',
