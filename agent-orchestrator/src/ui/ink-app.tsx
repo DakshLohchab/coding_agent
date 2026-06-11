@@ -71,6 +71,7 @@ export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor 
         <Text>Architect Agent: {stateValue === 'architecting' ? <Text color="blue">Running...</Text> : 'Idle'}</Text>
         <Text>Execution Agent: {stateValue === 'executing' ? <Text color="blue">Running...</Text> : 'Idle'}</Text>
         <Text>Verification Agent: {stateValue === 'verifying' ? <Text color="blue">Running...</Text> : 'Idle'}</Text>
+        <Text>Debate Agent: {stateValue === 'debating' ? <Text color="magenta">Debating...</Text> : 'Idle'}</Text>
       </Box>
 
       <Box marginTop={1} flexDirection="column">

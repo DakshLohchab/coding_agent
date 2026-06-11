@@ -5,6 +5,7 @@ import { Logger } from '../services/logger';
 import { ArchitectAgent } from '../agents/architect';
 import { ExecutionAgent } from '../agents/executor';
 import { VerificationAgent } from '../agents/verifier';
+import { DebateAgent } from '../agents/debate';
 
 import { ASTParser } from '../intelligence/ast-parser';
 import { VectorStore } from '../intelligence/vector-store';
@@ -19,10 +20,12 @@ import { AtomicGitTool } from '../execution/tools/atomic-git';
 import { IOLayer } from '../daemon/io-layer';
 import { CollisionDetector } from '../daemon/collision-detector';
 import { EventBroker } from '../services/event-broker';
+import { ContextCompressor } from '../services/context-compressor';
 
 // Core Services
 container.registerSingleton('ILogger', Logger);
 container.registerSingleton(EventBroker);
+container.registerSingleton(ContextCompressor);
 
 // Daemon Layer
 container.registerSingleton(IOLayer);
@@ -44,5 +47,6 @@ container.registerSingleton(FileWatcherDaemon);
 container.register('IArchitectAgent', { useClass: ArchitectAgent });
 container.register('IExecutionAgent', { useClass: ExecutionAgent });
 container.register('IVerificationAgent', { useClass: VerificationAgent });
+container.register('IDebateAgent', { useClass: DebateAgent });
 
 export { container };

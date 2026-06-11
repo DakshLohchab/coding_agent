@@ -1,15 +1,18 @@
 import { setup, assign, fromPromise } from 'xstate';
 import { container } from '../di/container';
 import { AgentContext, AgentEvent } from '../types';
-import { IArchitectAgent, IExecutionAgent, IVerificationAgent, ILogger } from '../agents/interfaces';
+import { IArchitectAgent, IExecutionAgent, IVerificationAgent, IDebateAgent, ILogger } from '../agents/interfaces';
 import { EventBroker } from '../services/event-broker';
+import { ContextCompressor } from '../services/context-compressor';
 
 // Resolve dependencies from DI
 const architect = container.resolve<IArchitectAgent>('IArchitectAgent');
 const executor = container.resolve<IExecutionAgent>('IExecutionAgent');
 const verifier = container.resolve<IVerificationAgent>('IVerificationAgent');
+const debateAgent = container.resolve<IDebateAgent>('IDebateAgent');
 const logger = container.resolve<ILogger>('ILogger');
 const eventBroker = container.resolve(EventBroker);
+const compressor = container.resolve(ContextCompressor);
 
 export const orchestratorMachine = setup({
   types: {
@@ -25,6 +28,9 @@ export const orchestratorMachine = setup({
     }),
     verifierActor: fromPromise(async ({ input }: { input: AgentContext }) => {
       return await verifier.verify(input);
+    }),
+    debateActor: fromPromise(async ({ input }: { input: AgentContext }) => {
+      return await debateAgent.debateAndConverge(input);
     })
   },
   actions: {
@@ -35,28 +41,13 @@ export const orchestratorMachine = setup({
       logger.info('State Machine completed orchestration successfully.');
     },
     compressHistoryIfNeeded: assign(({ context }) => {
-      // 1. Fast character-based token tracking (Total Characters / 4)
-      const historyStr = context.executionHistory.join('\n');
-      const tokens = Math.ceil(historyStr.length / 4);
-      
-      // 2. Maximum history limit: 40,000 tokens.
-      if (tokens > 40000) {
-        logger.warn(`Token budget exceeded (${tokens} > 40000). Triggering automated sliding-window compression...`);
-        
-        // 3. Keep main plan intact (context.plan is separate)
-        // Merge old execution histories and tool outputs into a concise summary block
-        const summary = `[System Note: Steps 1-4 completed successfully. Files modified: A, B. Error resolved: ReferenceError]`;
-        
-        // Retain the summary and the last 2 recent context windows to preserve immediate execution fidelity
-        const compressedHistory = [summary, ...context.executionHistory.slice(-2)];
-        
-        return {
-          executionHistory: compressedHistory,
-          historyTokenCount: Math.ceil(compressedHistory.join('\n').length / 4)
-        };
+      const result = compressor.compressIfNeeded(context.executionHistory);
+      if (result.compressed) {
+        logger.warn(`Token budget exceeded. ContextCompressor triggered sliding-window eviction.`);
       }
       return {
-        historyTokenCount: tokens
+        executionHistory: result.newHistory,
+        historyTokenCount: result.tokenCount
       };
     })
   }
@@ -148,16 +139,16 @@ export const orchestratorMachine = setup({
             ]
           },
           {
-            // If Execution Agent fails to compile code 3 times, route back to Architect Agent
+            // If Execution Agent fails to compile code 3 times, route to Multi-Agent Debate
             guard: ({ context }) => context.compilationFailures >= 2,
-            target: 'architecting',
+            target: 'debating',
             actions: [
               assign({
                 verificationLogs: ({ event }) => (event.output as any).logs,
                 compilationFailures: 0, // Reset failures for complete re-evaluation
                 executionHistory: ({ context, event }) => [
                   ...context.executionHistory, 
-                  `[VERIFIER] Critical Error (Attempt 3). Triggering Architect structural re-evaluation.\nLogs: ${(event.output as any).logs}`
+                  `[VERIFIER] Critical Error (Attempt 3). Triggering Multi-Agent Debate.\nLogs: ${(event.output as any).logs}`
                 ]
               }),
               'compressHistoryIfNeeded'
@@ -179,6 +170,27 @@ export const orchestratorMachine = setup({
             ]
           }
         ],
+        onError: {
+          target: 'failed',
+          actions: assign({ error: ({ event }) => event.error as Error })
+        }
+      }
+    },
+    debating: {
+      entry: [() => eventBroker.emitAsync('agent.state_change', 'debating')],
+      invoke: {
+        src: 'debateActor',
+        input: ({ context }) => context,
+        onDone: {
+          target: 'executing',
+          actions: [
+            assign({
+              plan: ({ event }) => event.output as string,
+              executionHistory: ({ context }) => [...context.executionHistory, '[DEBATE] Multi-Agent consensus reached. Plan revised.']
+            }),
+            'compressHistoryIfNeeded'
+          ]
+        },
         onError: {
           target: 'failed',
           actions: assign({ error: ({ event }) => event.error as Error })

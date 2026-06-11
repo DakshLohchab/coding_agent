@@ -4,6 +4,10 @@ export interface IArchitectAgent {
   analyzeAndPlan(context: AgentContext): Promise<string>;
 }
 
+export interface IDebateAgent {
+  debateAndConverge(context: AgentContext): Promise<string>;
+}
+
 export interface IExecutionAgent {
   generateCodeDiff(context: AgentContext): Promise<string>;
 }

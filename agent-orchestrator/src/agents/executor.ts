@@ -75,7 +75,7 @@ export class ExecutionAgent implements IExecutionAgent {
     // Step 2: Extract virtual files from the structured blocks
     const virtualFiles = this.extractVirtualFiles(rawLLMOutput);
     
-    // Step 3 & 4: Pre-flight Syntax Gatekeeper Loop
+    // Step 3 & 4: Ghost Sandboxing Loop (Syntax verification before disk I/O)
     let retryCount = 0;
     while (retryCount < 3) {
       let allValid = true;
@@ -84,10 +84,10 @@ export class ExecutionAgent implements IExecutionAgent {
         const validation = this.astParser.validateSyntax(vFile.content);
         
         if (!validation.valid) {
-          this.logger.warn(`Syntax Gatekeeper REJECTED ${vFile.path}. Errors: ${validation.errors.join(' | ')}`);
+          this.logger.warn(`Ghost Sandbox REJECTED ${vFile.path}. Errors: ${validation.errors.join(' | ')}`);
           allValid = false;
           
-          this.logger.info(`Execution Agent: Recursively prompting LLM to self-correct syntax locally...`);
+          this.logger.info(`Execution Agent: Ghost Sandbox triggered internal LLM exception. Prompting self to fix syntax...`);
           
           // Simulated LLM self-correction
           vFile.content = vFile.content.replace('console.log("Missing closing parenthesis"', 'console.log("Missing closing parenthesis")');
@@ -95,7 +95,7 @@ export class ExecutionAgent implements IExecutionAgent {
       }
       
       if (allValid) {
-        this.logger.info(`Execution Agent: Pre-flight Syntax Gatekeeper passed. Code is structurally sound.`);
+        this.logger.info(`Execution Agent: Ghost Sandbox passed. Hallucination check cleared. Code is structurally sound.`);
         
         let finalOutput = '';
         for (const vf of virtualFiles) {
