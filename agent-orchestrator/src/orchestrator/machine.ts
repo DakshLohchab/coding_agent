@@ -44,6 +44,11 @@ export const orchestratorMachine = setup({
     logSuccess: () => {
       getLogger().info('State Machine completed orchestration successfully.');
     },
+    emitAgentMessage: ({ context }) => {
+      if (context.lastAgentMessage) {
+        getEventBroker().emitAsync('agent.reply', context.lastAgentMessage);
+      }
+    },
     setupWorktree: () => {
       if (!fs.existsSync('.agent-workspace')) {
         try {
@@ -92,13 +97,15 @@ export const orchestratorMachine = setup({
   initial: 'idle',
   context: {
     prompt: '',
+    llmModel: 'openrouter',
     plan: null,
     codeDiff: null,
     verificationLogs: null,
     compilationFailures: 0,
     error: null,
     executionHistory: [],
-    historyTokenCount: 0
+    historyTokenCount: 0,
+    lastAgentMessage: null
   },
   states: {
     idle: {
@@ -109,10 +116,13 @@ export const orchestratorMachine = setup({
           target: 'architecting',
           actions: assign({
             prompt: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).prompt,
+            llmModel: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).model ?? 'openrouter',
             compilationFailures: 0,
             executionHistory: ['[SYSTEM] Agent orchestration started.'],
+            lastAgentMessage: ({ event }) => `Agent started with model ${(event as Extract<AgentEvent, { type: 'START' }>).model ?? 'openrouter'}.`, 
             historyTokenCount: Math.ceil('[SYSTEM] Agent orchestration started.'.length / 4)
-          })
+          }),
+          actions: ['emitAgentMessage']
         }
       }
     },
@@ -126,8 +136,10 @@ export const orchestratorMachine = setup({
           actions: [
             assign({ 
               plan: ({ event }) => event.output as string,
-              executionHistory: ({ context }) => [...context.executionHistory, '[ARCHITECT] Plan created and AST parsed.']
+              executionHistory: ({ context }) => [...context.executionHistory, '[ARCHITECT] Plan created and AST parsed.'],
+              lastAgentMessage: () => 'Architect completed the plan and prepared execution steps.'
             }),
+            'emitAgentMessage',
             'compressHistoryIfNeeded'
           ]
         },
@@ -150,8 +162,10 @@ export const orchestratorMachine = setup({
           actions: [
             assign({ 
               codeDiff: ({ event }) => event.output as string,
-              executionHistory: ({ context }) => [...context.executionHistory, '[EXECUTOR] Code diffs generated via NativeShell/AtomicGit.']
+              executionHistory: ({ context }) => [...context.executionHistory, '[EXECUTOR] Code diffs generated via NativeShell/AtomicGit.'],
+              lastAgentMessage: () => 'Execution finished generating code diffs; moving to verification.'
             }),
+            'emitAgentMessage',
             'compressHistoryIfNeeded'
           ]
         },
@@ -174,8 +188,10 @@ export const orchestratorMachine = setup({
               'applyWorktreePatch',
               assign({ 
                 verificationLogs: ({ event }) => (event.output as any).logs,
-                executionHistory: ({ context, event }) => [...context.executionHistory, `[VERIFIER] Success: ${(event.output as any).logs}`]
+                executionHistory: ({ context }) => [...context.executionHistory, `[VERIFIER] Success: ${(event.output as any).logs}`],
+                lastAgentMessage: ({ event }) => `Verification succeeded: ${(event.output as any).logs}`
               }),
+              'emitAgentMessage',
               'compressHistoryIfNeeded'
             ]
           },
@@ -204,8 +220,10 @@ export const orchestratorMachine = setup({
                 executionHistory: ({ context, event }) => [
                   ...context.executionHistory, 
                   `[VERIFIER] Verification Failed. Routing back to Executor. Logs: ${(event.output as any).logs}`
-                ]
+                ],
+                lastAgentMessage: ({ event }) => 'Verification failed. Re-running execution with a revised strategy.'
               }),
+              'emitAgentMessage',
               'compressHistoryIfNeeded'
             ]
           }
@@ -238,7 +256,11 @@ export const orchestratorMachine = setup({
       }
     },
     done: {
-      entry: ['logSuccess', () => getEventBroker().emitAsync('agent.state_change', 'done')],
+      entry: [
+        'logSuccess',
+        () => getEventBroker().emitAsync('agent.state_change', 'done'),
+        () => getEventBroker().emitAsync('agent.reply', 'Orchestration finished successfully. The agent has completed the task.')
+      ],
       type: 'final'
     },
     failed: {

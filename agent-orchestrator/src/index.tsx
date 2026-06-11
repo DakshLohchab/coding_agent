@@ -38,11 +38,12 @@ async function bootstrap() {
     render(React.createElement(OrchestratorUI, { ioLayer, collisionDetector, eventBroker, actor }));
 
     actor.start();
-    
-    // Seed an initial prompt via CLI arguments or default
-    setTimeout(() => {
-      actor.send({ type: 'START', prompt: 'Implement a persistent daemon agent.' });
-    }, 1000);
+
+    const args = process.argv.slice(2);
+    if (args.length > 0) {
+      const prompt = args.join(' ');
+      actor.send({ type: 'START', prompt, model: 'openrouter' });
+    }
 
   } catch (err) {
     logger.error('Bootstrap runtime error', err);

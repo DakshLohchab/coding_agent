@@ -1,5 +1,6 @@
 export interface AgentContext {
   prompt: string;
+  llmModel: string;
   plan: string | null;
   codeDiff: string | null;
   verificationLogs: string | null;
@@ -7,10 +8,11 @@ export interface AgentContext {
   error: Error | null;
   executionHistory: string[];
   historyTokenCount: number;
+  lastAgentMessage: string | null;
 }
 
 export type AgentEvent =
-  | { type: 'START'; prompt: string }
+  | { type: 'START'; prompt: string; model?: string }
   | { type: 'PLAN_CREATED'; plan: string }
   | { type: 'CODE_GENERATED'; codeDiff: string }
   | { type: 'VERIFICATION_SUCCESS' }
