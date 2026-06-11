@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { applyEditBlocks } from "./editor";
+import { executeCommand } from "./runtime";
 import { generateRepoMap } from "./scanner";
 
 type ChatRole = "user" | "assistant";
@@ -15,6 +16,7 @@ type Provider = "anthropic" | "openai";
 
 const db = new Database("agent.sqlite");
 const MAX_EDIT_RETRIES = 2;
+const MAX_COMMAND_RETRIES = 3;
 
 function initializeDatabase(database: Database): void {
   database.exec(`
@@ -66,6 +68,12 @@ target_file: path/to/file.ts
 
 The SEARCH section must match the current file contents exactly, including indentation and blank lines.
 If multiple edits are needed, emit one block per replacement.
+
+You can request a local command by outputting exactly one or more XML tags like:
+<execute>npm run test</execute>
+
+Use commands to run tests, compilers, linters, or other project verification. Prefer Bun commands in this project.
+Command output will be returned to you automatically. If a command fails, analyze the error and issue corrected SEARCH/REPLACE blocks.
 
 <repo_map>
 ${repoMap}
@@ -205,7 +213,53 @@ function buildEditCorrectionPrompt(errors: string[]): string {
 ${errors.join("\n\n")}`;
 }
 
-export async function callLLM(prompt: string, editRetryCount = 0): Promise<string> {
+function parseExecuteCommands(response: string): string[] {
+  const commands: string[] = [];
+  const pattern = /<execute>([\s\S]*?)<\/execute>/g;
+
+  for (const match of response.matchAll(pattern)) {
+    const command = match[1]?.trim();
+
+    if (command) {
+      commands.push(command);
+    }
+  }
+
+  return commands;
+}
+
+function buildCommandFailurePrompt(commandOutput: string): string {
+  return `A command requested by you failed. Analyze the output and provide targeted SEARCH/REPLACE edit blocks to fix the issue. After edits, request the relevant command again with <execute>...</execute>.
+
+<command_result>
+${commandOutput}
+</command_result>`;
+}
+
+async function runRequestedCommands(response: string): Promise<string[]> {
+  const failures: string[] = [];
+
+  for (const command of parseExecuteCommands(response)) {
+    console.log(`Running command: ${command}`);
+
+    const result = await executeCommand(command);
+
+    console.log(result.output);
+    saveMessage("user", `<command_result>\n${result.output}\n</command_result>`);
+
+    if (result.exitCode > 0) {
+      failures.push(result.output);
+    }
+  }
+
+  return failures;
+}
+
+export async function callLLM(
+  prompt: string,
+  editRetryCount = 0,
+  commandRetryCount = 0,
+): Promise<string> {
   const provider = getProvider();
 
   if (!provider) {
@@ -247,6 +301,17 @@ export async function callLLM(prompt: string, editRetryCount = 0): Promise<strin
   if (editErrors.length > 0) {
     console.error("Edit blocks still failed after retry limit:");
     console.error(editErrors.join("\n\n"));
+  }
+
+  const commandFailures = await runRequestedCommands(assistantResponse);
+
+  if (commandFailures.length > 0 && commandRetryCount < MAX_COMMAND_RETRIES) {
+    return callLLM(buildCommandFailurePrompt(commandFailures.join("\n\n")), 0, commandRetryCount + 1);
+  }
+
+  if (commandFailures.length > 0) {
+    console.error("Commands still failed after retry limit:");
+    console.error(commandFailures.join("\n\n"));
   }
 
   return assistantResponse;
