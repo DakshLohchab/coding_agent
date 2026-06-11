@@ -125,6 +125,21 @@ export const orchestratorMachine = setup({
     failed: {
       entry: ['logError'],
       type: 'final'
+    },
+    paused: {
+      on: {
+        RESUME_FROM_COLLISION: {
+          target: 'architecting',
+          actions: assign({
+            prompt: ({ event, context }) => context.prompt + `\n\n[USER RESOLUTION]: ${(event as any).resolution}`
+          })
+        }
+      }
+    }
+  },
+  on: {
+    PAUSE_FOR_COLLISION: {
+      target: '.paused'
     }
   }
 });

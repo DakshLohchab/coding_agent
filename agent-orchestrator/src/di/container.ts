@@ -12,8 +12,24 @@ import { Indexer } from '../intelligence/indexer';
 import { RAGService } from '../intelligence/rag-service';
 import { FileWatcherDaemon } from '../intelligence/file-watcher';
 
+import { ToolRegistry } from '../execution/tool-registry';
+import { NativeShellTool } from '../execution/tools/native-shell';
+import { AtomicGitTool } from '../execution/tools/atomic-git';
+
+import { IOLayer } from '../daemon/io-layer';
+import { CollisionDetector } from '../daemon/collision-detector';
+
 // Core Services
 container.registerSingleton('ILogger', Logger);
+
+// Daemon Layer
+container.registerSingleton(IOLayer);
+container.registerSingleton(CollisionDetector);
+
+// Execution Layer
+container.registerSingleton(ToolRegistry);
+container.registerSingleton(NativeShellTool);
+container.registerSingleton(AtomicGitTool);
 
 // Intelligence Layer
 container.registerSingleton(ASTParser);

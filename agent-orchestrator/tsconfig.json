@@ -11,7 +11,8 @@
     "rootDir": "./src",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react"
   },
   "include": ["src/**/*"]
 }
