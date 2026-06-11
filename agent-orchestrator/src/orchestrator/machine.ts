@@ -4,6 +4,8 @@ import { AgentContext, AgentEvent } from '../types';
 import { IArchitectAgent, IExecutionAgent, IVerificationAgent, IDebateAgent, ILogger } from '../agents/interfaces';
 import { EventBroker } from '../services/event-broker';
 import { ContextCompressor } from '../services/context-compressor';
+import { execSync } from 'child_process';
+import * as fs from 'fs';
 
 // Resolve dependencies from DI
 const architect = container.resolve<IArchitectAgent>('IArchitectAgent');
@@ -39,6 +41,38 @@ export const orchestratorMachine = setup({
     },
     logSuccess: () => {
       logger.info('State Machine completed orchestration successfully.');
+    },
+    setupWorktree: () => {
+      if (!fs.existsSync('.agent-workspace')) {
+        try {
+          try { execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' }); } catch (e) {}
+          execSync('git worktree add .agent-workspace -f', { stdio: 'ignore' });
+          logger.info('Created isolated git worktree at .agent-workspace');
+        } catch (e: any) {
+          logger.error(`Failed to setup worktree: ${e.message}`);
+        }
+      }
+    },
+    applyWorktreePatch: () => {
+      try {
+        execSync('git -C .agent-workspace add -A');
+        const diff = execSync('git -C .agent-workspace diff HEAD').toString();
+        if (diff.trim()) {
+          fs.writeFileSync('patch.diff', diff);
+          execSync('git apply patch.diff');
+          fs.unlinkSync('patch.diff');
+        }
+        execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
+        logger.info('Successfully merged worktree patch and cleaned up.');
+      } catch (e: any) {
+        logger.error(`Failed to merge worktree patch: ${e.message}`);
+      }
+    },
+    removeWorktree: () => {
+      try {
+        execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
+        logger.info('Cleaned up failed .agent-workspace worktree.');
+      } catch (e) {}
     },
     compressHistoryIfNeeded: assign(({ context }) => {
       const result = compressor.compressIfNeeded(context.executionHistory);
@@ -101,7 +135,10 @@ export const orchestratorMachine = setup({
       }
     },
     executing: {
-      entry: [() => eventBroker.emitAsync('agent.state_change', 'executing')],
+      entry: [
+        () => eventBroker.emitAsync('agent.state_change', 'executing'),
+        'setupWorktree'
+      ],
       invoke: {
         src: 'executorActor',
         input: ({ context }) => context,
@@ -131,6 +168,7 @@ export const orchestratorMachine = setup({
             guard: ({ event }) => (event.output as any).success === true,
             target: 'done',
             actions: [
+              'applyWorktreePatch',
               assign({ 
                 verificationLogs: ({ event }) => (event.output as any).logs,
                 executionHistory: ({ context, event }) => [...context.executionHistory, `[VERIFIER] Success: ${(event.output as any).logs}`]
@@ -143,6 +181,7 @@ export const orchestratorMachine = setup({
             guard: ({ context }) => context.compilationFailures >= 2,
             target: 'debating',
             actions: [
+              'removeWorktree',
               assign({
                 verificationLogs: ({ event }) => (event.output as any).logs,
                 compilationFailures: 0, // Reset failures for complete re-evaluation

@@ -17,7 +17,18 @@ export interface IVerificationAgent {
 }
 
 export interface ILogger {
-  info(message: string): void;
-  error(message: string, err?: any): void;
-  warn(message: string): void;
+  info(message: string, ...meta: any[]): void;
+  warn(message: string, ...meta: any[]): void;
+  error(message: string, ...meta: any[]): void;
+  debug(message: string, ...meta: any[]): void;
+}
+
+export interface IEventBroker {
+  emit(event: string, payload?: any): void;
+  on(event: string, callback: (payload: any) => void): void;
+}
+
+export interface IToolRegistry {
+  executeTool(name: string, args: Record<string, any>): Promise<any>;
+  getToolSchemas(): any[];
 }

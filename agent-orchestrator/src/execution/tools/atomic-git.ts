@@ -2,30 +2,29 @@ import { injectable, inject } from 'tsyringe';
 import { ITool, JSONSchema } from '../tool-registry';
 import { ILogger } from '../../agents/interfaces';
 import { spawn } from 'child_process';
-import * as crypto from 'crypto';
+import * as fs from 'fs';
 
 @injectable()
 export class AtomicGitTool implements ITool {
   public name = 'atomic_git';
-  public description = 'Manages code modifications on ephemeral git branches to prevent workspace corruption during agentic loops.';
+  public description = 'Manages code modifications on ephemeral git worktrees to prevent workspace corruption during agentic loops.';
   
   public schema: JSONSchema = {
     type: 'object',
     properties: {
-      action: { type: 'string', enum: ['create_ephemeral', 'commit', 'approve_merge', 'reject_reset'] },
+      action: { type: 'string', enum: ['create_worktree', 'commit', 'apply_patch', 'remove_worktree'] },
       message: { type: 'string', description: 'Commit message for the code changes.' }
     },
     required: ['action']
   };
 
-  private currentEphemeralBranch: string | null = null;
-  private baseBranch: string = 'main';
+  private worktreePath = '.agent-workspace';
 
   constructor(@inject('ILogger') private logger: ILogger) {}
 
-  private async execGit(args: string[]): Promise<string> {
+  private async execGit(args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('git', args);
+      const proc = spawn('git', args, { cwd });
       let out = '';
       let err = '';
       proc.stdout.on('data', d => out += d);
@@ -40,40 +39,34 @@ export class AtomicGitTool implements ITool {
   public async execute(args: { action: string, message?: string }): Promise<any> {
     try {
       switch (args.action) {
-        case 'create_ephemeral':
-          // Sandbox code execution into a temporary branch
-          const branchId = `ephemeral-${crypto.randomBytes(4).toString('hex')}`;
-          await this.execGit(['checkout', '-b', branchId]);
-          this.currentEphemeralBranch = branchId;
-          this.logger.info(`[AtomicGit] Created and checked out sandbox branch: ${branchId}`);
-          return { success: true, branch: branchId };
+        case 'create_worktree':
+          try { await this.execGit(['worktree', 'remove', this.worktreePath, '--force']); } catch {}
+          await this.execGit(['worktree', 'add', this.worktreePath, '-f']);
+          this.logger.info(`[AtomicGit] Created sandbox worktree at ${this.worktreePath}`);
+          return { success: true, worktree: this.worktreePath };
 
         case 'commit':
           if (!args.message) throw new Error('Commit message required.');
-          await this.execGit(['add', '.']);
-          await this.execGit(['commit', '-m', args.message]);
-          this.logger.info(`[AtomicGit] Committed diffs to sandbox ${this.currentEphemeralBranch}`);
+          await this.execGit(['add', '.'], this.worktreePath);
+          await this.execGit(['commit', '-m', args.message], this.worktreePath);
+          this.logger.info(`[AtomicGit] Committed diffs to sandbox ${this.worktreePath}`);
           return { success: true };
 
-        case 'approve_merge':
-          // Gatekeeper: Merges only if Verification Agent clears the tests
-          if (!this.currentEphemeralBranch) throw new Error('No sandbox branch active.');
-          await this.execGit(['checkout', this.baseBranch]);
-          await this.execGit(['merge', this.currentEphemeralBranch]);
-          await this.execGit(['branch', '-D', this.currentEphemeralBranch]);
-          
-          this.logger.info(`[AtomicGit] Verified. Successfully merged ${this.currentEphemeralBranch} into ${this.baseBranch}`);
-          this.currentEphemeralBranch = null;
+        case 'apply_patch':
+          await this.execGit(['add', '-A'], this.worktreePath);
+          const diff = await this.execGit(['diff', 'HEAD'], this.worktreePath);
+          if (diff.trim()) {
+            fs.writeFileSync('patch.diff', diff);
+            await this.execGit(['apply', 'patch.diff']);
+            fs.unlinkSync('patch.diff');
+          }
+          await this.execGit(['worktree', 'remove', this.worktreePath, '--force']);
+          this.logger.info(`[AtomicGit] Verified. Successfully merged ${this.worktreePath} back to primary workspace using patch.`);
           return { success: true, merged: true };
 
-        case 'reject_reset':
-          // Hard reset to discard corrupted changes
-          if (!this.currentEphemeralBranch) throw new Error('No sandbox branch active.');
-          await this.execGit(['checkout', this.baseBranch]);
-          await this.execGit(['branch', '-D', this.currentEphemeralBranch]);
-          
-          this.logger.warn(`[AtomicGit] Rejected. Discarded ${this.currentEphemeralBranch}. Workspace cleanly reverted to ${this.baseBranch}`);
-          this.currentEphemeralBranch = null;
+        case 'remove_worktree':
+          await this.execGit(['worktree', 'remove', this.worktreePath, '--force']);
+          this.logger.warn(`[AtomicGit] Rejected. Discarded ${this.worktreePath}. Workspace cleanly reverted.`);
           return { success: true, reset: true };
 
         default:

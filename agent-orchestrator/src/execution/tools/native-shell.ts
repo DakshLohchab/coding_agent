@@ -33,12 +33,15 @@ export class NativeShellTool implements ITool {
   public async execute(args: { script: string, background?: boolean }): Promise<any> {
     this.logger.info(`NativeShell executing command via PowerShell...`);
     
+    const worktreePath = path.join(process.cwd(), '.agent-workspace');
+    const cwd = fs.existsSync(worktreePath) ? worktreePath : process.cwd();
+
     const process = spawn('powershell.exe', [
       '-NoProfile', 
       '-NonInteractive', 
       '-Command', 
       args.script
-    ]);
+    ], { cwd });
 
     if (args.background) {
       this.logger.info(`Spawned detached background process with PID: ${process.pid}`);

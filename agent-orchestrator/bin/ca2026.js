@@ -1,20 +1,16 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const path = require('path');
-const { spawnSync } = require('child_process');
+// Recreate the missing __dirname variable for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Resolve the path to the original agent-orchestrator directory
-const projectDir = path.resolve(__dirname, '..');
-const entryFile = path.join(projectDir, 'src', 'index.tsx');
+// Point to the TSX entry file
+const entryFile = join(__dirname, '..', 'src', 'index.tsx');
 
-const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-
-// Boot up the orchestrator daemon natively via TSX
-const result = spawnSync(npxCmd, ['tsx', entryFile], { stdio: 'inherit' });
-
-if (result.error) {
-  console.error("Agent crashed:", result.error);
+// Import and execute the agent
+import(entryFile).catch(err => {
+  console.error("Agent crashed:", err);
   process.exit(1);
-}
-
-process.exit(result.status || 0);
+});
