@@ -36,27 +36,38 @@ export class NativeShellTool implements ITool {
     const worktreePath = path.join(process.cwd(), '.agent-workspace');
     const cwd = fs.existsSync(worktreePath) ? worktreePath : process.cwd();
 
-    const process = spawn('powershell.exe', [
-      '-NoProfile', 
-      '-NonInteractive', 
-      '-Command', 
-      args.script
-    ], { cwd });
-
-    if (args.background) {
-      this.logger.info(`Spawned detached background process with PID: ${process.pid}`);
-      process.unref(); 
-      return { status: 'background', pid: process.pid };
+    let proc: any;
+    try {
+      proc = spawn('powershell.exe', [
+        '-NoProfile', 
+        '-NonInteractive', 
+        '-Command', 
+        args.script
+      ], { cwd });
+    } catch (spawnErr) {
+      this.logger.error('NativeShell failed to spawn process', spawnErr);
+      return { success: false, error: spawnErr.message };
     }
 
-    return new Promise((resolve, reject) => {
+    if (args.background) {
+      try {
+        this.logger.info(`Spawned detached background process with PID: ${proc.pid}`);
+        proc.unref(); 
+        return { status: 'background', pid: proc.pid };
+      } catch (e) {
+        this.logger.warn('Failed to detach background process', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    return new Promise((resolve) => {
       let stdout = '';
       let stderr = '';
 
-      process.stdout.on('data', (data) => stdout += data.toString());
-      process.stderr.on('data', (data) => stderr += data.toString());
+      if (proc.stdout) proc.stdout.on('data', (data) => stdout += data.toString());
+      if (proc.stderr) proc.stderr.on('data', (data) => stderr += data.toString());
 
-      process.on('close', (code) => {
+      proc.on('close', (code) => {
         if (code !== 0) {
           this.logger.warn(`NativeShell command failed with code ${code}. Extracting stack traces...`);
           const extractedErrors = this.extractStackTraces(stderr || stdout);
@@ -67,9 +78,10 @@ export class NativeShellTool implements ITool {
         }
       });
 
-      process.on('error', (err) => {
+      proc.on('error', (err) => {
         this.logger.error('NativeShell process spawn error', err);
-        reject(err);
+        // Resolve with structured failure instead of rejecting to avoid crashing orchestrator actors
+        resolve({ success: false, error: err.message });
       });
     });
   }

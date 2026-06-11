@@ -2,6 +2,7 @@ import { injectable, inject } from 'tsyringe';
 import * as chokidar from 'chokidar';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as path from 'path';
 import { ILogger } from '../agents/interfaces';
 import { Indexer } from './indexer';
 
@@ -18,8 +19,16 @@ export class FileWatcherDaemon {
   public start(watchPath: string) {
     this.logger.info(`Starting FileWatcherDaemon on path: ${watchPath}`);
     this.watcher = chokidar.watch(watchPath, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
-      persistent: true
+      // Ignore dotfiles, node_modules, and TypeScript declaration files (.d.ts)
+      ignored: (p: string) => {
+        if (!p) return false;
+        if ((/([\/\\])node_modules([\/\\])/.test(p))) return true;
+        if (/\.d\.ts$/.test(p)) return true;
+        if ((/(^|[\/\\])\./.test(path.basename(p)))) return true;
+        return false;
+      },
+      persistent: true,
+      ignoreInitial: true
     });
 
     this.watcher
@@ -28,24 +37,38 @@ export class FileWatcherDaemon {
       .on('unlink', path => this.handleFileRemove(path));
   }
 
-  private handleFileChange(path: string) {
-    if (!path.endsWith('.ts')) return; // Process TypeScript files
-    
+  private handleFileChange(filePath: string) {
+    const normalized = filePath.replace(/\\/g, '/');
+
+    // Skip node_modules and declaration files explicitly (guard in addition to chokidar ignored)
+    if (normalized.includes('/node_modules/')) return;
+    if (normalized.endsWith('.d.ts')) return;
+
+    // Only process TypeScript source files
+    if (!(normalized.endsWith('.ts') || normalized.endsWith('.tsx'))) return;
+
     try {
-      const currentHash = this.computeHash(path);
-      if (this.fileHashes.get(path) === currentHash) {
+      const stats = fs.statSync(filePath);
+      const MAX_SIZE = 1_000_000; // 1MB
+      if (stats.size > MAX_SIZE) {
+        this.logger.info(`[Watcher] Skipping large file: ${filePath} (${stats.size} bytes)`);
+        return;
+      }
+
+      const currentHash = this.computeHash(filePath);
+      if (this.fileHashes.get(filePath) === currentHash) {
         return; // File content hasn't structurally changed
       }
 
-      this.logger.info(`[Watcher] File changed: ${path}. Selectively updating AST & Vector Index...`);
-      this.fileHashes.set(path, currentHash);
+      this.logger.info(`[Watcher] File changed: ${filePath}. Selectively updating AST & Vector Index...`);
+      this.fileHashes.set(filePath, currentHash);
       
       // Fire-and-forget indexing (daemonized)
-      this.indexer.indexFile(path).catch(err => {
-        this.logger.error(`Error indexing file ${path}`, err);
+      this.indexer.indexFile(filePath).catch(err => {
+        this.logger.error(`Error indexing file ${filePath}`, err);
       });
     } catch (error) {
-      this.logger.error(`Watcher error processing ${path}`, error);
+      this.logger.error(`Watcher error processing ${filePath}`, error);
     }
   }
 

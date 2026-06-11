@@ -1,6 +1,10 @@
 import { injectable } from 'tsyringe';
 import * as fs from 'fs';
+import { createRequire } from 'module';
 
+// Use Node's `createRequire` so this module can run as ESM while still
+// loading CommonJS-style packages that expect `require`.
+const require = createRequire(import.meta.url);
 const Parser = require('tree-sitter');
 const tsGrammar = require('tree-sitter-typescript').typescript;
 
@@ -32,7 +36,14 @@ export class ASTParser {
 
   public parseFile(filePath: string): ParsedFile {
     const code = fs.readFileSync(filePath, 'utf8');
-    const tree = this.parser.parse(code);
+    let tree: any;
+    try {
+      tree = this.parser.parse(code);
+    } catch (err) {
+      // Tree-sitter may throw for very large or unsupported .d.ts/type files.
+      // Return an empty parsed result so indexer can continue.
+      return { filePath, imports: [], nodes: [] };
+    }
     const nodes: ASTNodeData[] = [];
     const imports: string[] = [];
 
