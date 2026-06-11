@@ -12,37 +12,44 @@ import { CollisionDetector } from './daemon/collision-detector';
 import { EventBroker } from './services/event-broker';
 import { OrchestratorUI } from './ui/ink-app';
 
-const logger = container.resolve<ILogger>('ILogger');
-const fileWatcher = container.resolve(FileWatcherDaemon);
-const vectorStore = container.resolve(VectorStore);
-const ioLayer = container.resolve(IOLayer);
-const collisionDetector = container.resolve(CollisionDetector);
-const eventBroker = container.resolve(EventBroker);
-
 async function bootstrap() {
-  // Initialize Intelligence & Daemon Layers
-  await vectorStore.initialize();
-  
-  // Watch the current directory wherever the user invokes 'ca2026'
-  const workingDir = process.cwd();
-  fileWatcher.start(workingDir);
-  
-  ioLayer.initialize(8080);
-  collisionDetector.start(workingDir);
+  // 1. Move ALL container resolutions INSIDE the async function to prevent module race conditions
+  const logger = container.resolve<ILogger>('ILogger');
+  const fileWatcher = container.resolve(FileWatcherDaemon);
+  const vectorStore = container.resolve(VectorStore);
+  const ioLayer = container.resolve(IOLayer);
+  const collisionDetector = container.resolve(CollisionDetector);
+  const eventBroker = container.resolve(EventBroker);
 
-  const actor = createActor(orchestratorMachine);
+  try {
+    // Initialize Intelligence & Daemon Layers
+    await vectorStore.initialize();
+    
+    // Watch the current directory wherever the user invokes 'ca2026'
+    const workingDir = process.cwd();
+    fileWatcher.start(workingDir);
+    
+    ioLayer.initialize(8080);
+    collisionDetector.start(workingDir);
 
-  // Render the Ink React UI with decoupled async broker
-  render(React.createElement(OrchestratorUI, { ioLayer, collisionDetector, eventBroker, actor }));
+    const actor = createActor(orchestratorMachine);
 
-  actor.start();
-  
-  // Seed an initial prompt via CLI arguments or default
-  setTimeout(() => {
-    actor.send({ type: 'START', prompt: 'Implement a persistent daemon agent.' });
-  }, 1000);
+    // Render the Ink React UI with decoupled async broker
+    render(React.createElement(OrchestratorUI, { ioLayer, collisionDetector, eventBroker, actor }));
+
+    actor.start();
+    
+    // Seed an initial prompt via CLI arguments or default
+    setTimeout(() => {
+      actor.send({ type: 'START', prompt: 'Implement a persistent daemon agent.' });
+    }, 1000);
+
+  } catch (err) {
+    logger.error('Bootstrap runtime error', err);
+  }
 }
 
+// Top-level catch uses native console since logger is now locally scoped
 bootstrap().catch(err => {
-  logger.error('Bootstrap error', err);
+  console.error('Fatal Bootstrap error', err);
 });
