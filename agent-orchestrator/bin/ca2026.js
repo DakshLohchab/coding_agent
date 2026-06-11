@@ -3,18 +3,20 @@ import { spawnSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Recreate directory variables
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Point to the TSX entry file
-const entryFile = join(__dirname, '..', 'src', 'index.tsx');
+const pkgDir  = join(__dirname, '..');
+const entryFile = join(pkgDir, 'src', 'index.tsx');
 
-// Trampoline: Force Node to instantly spawn Bun and hand over the terminal
-const result = spawnSync('bun', ['run', entryFile], { 
-    stdio: 'inherit', 
-    shell: true 
+// Use the local tsx binary (devDep) — esbuild honours emitDecoratorMetadata
+// Unlike `bun run`, which silently strips it and breaks tsyringe.
+const tsx = join(pkgDir, 'node_modules', '.bin', 'tsx');
+
+const result = spawnSync(tsx, [entryFile], {
+    stdio: 'inherit',
+    shell: true,
+    cwd: pkgDir   // run from the package root so tsx finds tsconfig.json
 });
 
-// Exit cleanly when the agent closes
 process.exit(result.status ?? 0);
