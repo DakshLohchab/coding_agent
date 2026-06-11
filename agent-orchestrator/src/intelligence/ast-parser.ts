@@ -109,4 +109,32 @@ export class ASTParser {
 
     return { filePath, imports, nodes };
   }
+
+  /**
+   * Pre-flight Syntax Gatekeeper method.
+   * Parses a raw virtual code string and recursively scans for AST 'ERROR' nodes.
+   */
+  public validateSyntax(code: string): { valid: boolean; errors: string[] } {
+    const tree = this.parser.parse(code);
+    const errors: string[] = [];
+
+    const traverse = (node: any) => {
+      // tree-sitter flags invalid syntax as 'ERROR' nodes or 'MISSING' nodes
+      if (node.type === 'ERROR' || node.isMissing) {
+        const errorMsg = `Syntax Error at line ${node.startPosition.row + 1}, column ${node.startPosition.column}: Unexpected token or missing block.`;
+        errors.push(errorMsg);
+      }
+      
+      for (const child of node.namedChildren) {
+        traverse(child);
+      }
+    };
+
+    traverse(tree.rootNode);
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
 }

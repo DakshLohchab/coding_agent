@@ -4,6 +4,7 @@ import { Box, Text } from 'ink';
 export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor }: any) => {
   const [stateValue, setStateValue] = useState('idle');
   const [collision, setCollision] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
 
   useEffect(() => {
     // 1. Subscribe to asynchronous, non-blocking EventBroker
@@ -11,6 +12,11 @@ export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor 
       setStateValue(state);
     };
     eventBroker.on('agent.state_change', handleStateChange);
+
+    const handleAudioListening = (listening: boolean) => {
+      setIsListening(listening);
+    };
+    eventBroker.on('audio.listening', handleAudioListening);
 
     // 2. Active Collision Watcher Integration
     const handleCollision = (path: string) => {
@@ -24,12 +30,16 @@ export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor 
       if (msg.type === 'collision_resolution') {
         setCollision(null);
         actor.send({ type: 'RESUME_FROM_COLLISION', resolution: msg.payload });
+      } else if (msg.type === 'prompt') {
+        // Trigger the orchestrator state machine directly from the transcribed text!
+        actor.send({ type: 'START', prompt: msg.payload });
       }
     };
     ioLayer.on('input', handleIO);
 
     return () => {
       eventBroker.off('agent.state_change', handleStateChange);
+      eventBroker.off('audio.listening', handleAudioListening);
       collisionDetector.off('collision', handleCollision);
       ioLayer.off('input', handleIO);
     };
@@ -41,11 +51,17 @@ export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor 
         <Text bold color="cyan">Agent Orchestrator Daemon</Text>
         <Text>Status: <Text color={stateValue === 'idle' ? 'gray' : 'green'}>{stateValue.toUpperCase()}</Text></Text>
         
+        {isListening && (
+          <Box marginTop={1}>
+            <Text bold color="greenBright">🎙️ Listening... (Receiving PCM Audio Stream)</Text>
+          </Box>
+        )}
+
         {collision && (
           <Box marginTop={1} padding={1} borderStyle="single" borderColor="red" flexDirection="column">
             <Text bold color="red">⚠️ IDE COLLISION DETECTED</Text>
             <Text color="yellow">User manually modified: {collision}</Text>
-            <Text>State Machine paused. Awaiting I/O resolution (e.g., CLI or WebSocket input)...</Text>
+            <Text>State Machine paused. Awaiting I/O resolution...</Text>
           </Box>
         )}
       </Box>
@@ -59,7 +75,7 @@ export const OrchestratorUI = ({ ioLayer, collisionDetector, eventBroker, actor 
 
       <Box marginTop={1} flexDirection="column">
         <Text bold color="magenta">Intelligence Layer Interfaces:</Text>
-        <Text color="gray">AST VectorStore [Online] | WebSockets [Port 8080] | Audio Hooks [Pending]</Text>
+        <Text color="gray">AST VectorStore [Online] | WebSockets [Port 8080] | Audio Pipeline [Online]</Text>
       </Box>
     </Box>
   );

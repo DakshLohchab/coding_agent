@@ -25,7 +25,7 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  public getToolSchemas(): any[] {
+  public getOpenAIToolsSchema(): any[] {
     return Array.from(this.tools.values()).map(tool => ({
       type: 'function',
       function: {
