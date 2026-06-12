@@ -1,32 +1,29 @@
 import 'reflect-metadata';
 import { createActor } from 'xstate';
+import React from 'react';
+import { render } from 'ink';
+import { OrchestratorUI } from './ui/ink-app.js';
 import { orchestratorMachine } from './orchestrator/machine.js';
 import { container } from './di/container.js';
 import { ILogger } from './agents/interfaces.js';
 import { FileWatcherDaemon } from './intelligence/file-watcher.js';
 import { VectorStore } from './intelligence/vector-store.js';
+import { EventBroker } from './services/event-broker.js';
 
 const logger = container.resolve<ILogger>('ILogger');
 const fileWatcher = container.resolve(FileWatcherDaemon);
 const vectorStore = container.resolve(VectorStore);
+const eventBroker = container.resolve(EventBroker);
 
 async function bootstrap() {
-  logger.info('Bootstrapping Autonomous Agent Orchestrator...');
-
   // Initialize Intelligence Layer
   await vectorStore.initialize();
   fileWatcher.start(process.cwd() + '/src');
 
   const actor = createActor(orchestratorMachine as any) as any;
-
-  actor.subscribe((state) => {
-    logger.info(`[State Transition] Current State: ${state.value}`);
-  });
-
   actor.start();
 
-  logger.info('Dispatching START event...');
-  actor.send({ type: 'START', prompt: 'Implement a production-ready HTTP API endpoint.' });
+  render(React.createElement(OrchestratorUI, { eventBroker, actor }));
 }
 
 bootstrap().catch(err => {

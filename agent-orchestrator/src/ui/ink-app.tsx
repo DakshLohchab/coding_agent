@@ -26,9 +26,11 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [modelMenu, setModelMenu] = useState(false);
   const [modelSelectedIndex, setModelSelectedIndex] = useState(0);
+  const [askingApiKeyFor, setAskingApiKeyFor] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState('');
 
   const filteredCommands = COMMANDS.filter(c => c.name.startsWith(chatInput.toLowerCase()));
-  const showAutocomplete = chatInput.startsWith('/') && !modelMenu;
+  const showAutocomplete = chatInput.startsWith('/') && !modelMenu && !askingApiKeyFor;
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -41,14 +43,16 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
       } else if (key.downArrow) {
         setModelSelectedIndex(prev => Math.min(MODELS.length - 1, prev + 1));
       } else if (key.return) {
-        const configService = container.resolve(ConfigService);
-        const currentConfig = configService.getConfig() || { provider: '', apiKey: 'dummy-key' };
-        configService.saveConfig({ ...currentConfig, provider: MODELS[modelSelectedIndex] });
+        setAskingApiKeyFor(MODELS[modelSelectedIndex]);
         setModelMenu(false);
-        setChatLog(log => [...log, { role: 'system', text: `LLM Provider switched to: ${MODELS[modelSelectedIndex]}` }]);
-        setChatInput('');
       } else if (key.escape) {
         setModelMenu(false);
+        setChatInput('');
+      }
+    } else if (askingApiKeyFor) {
+      if (key.escape) {
+        setAskingApiKeyFor('');
+        setApiKeyInput('');
         setChatInput('');
       }
     } else if (showAutocomplete) {
@@ -58,7 +62,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
         setSelectedIndex(prev => Math.min(filteredCommands.length - 1, prev + 1));
       }
     }
-  }, { isActive: showAutocomplete || modelMenu });
+  }, { isActive: showAutocomplete || modelMenu || !!askingApiKeyFor });
 
   useEffect(() => {
     const handleStateChange = (state: string) => {
@@ -214,7 +218,27 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
           </Box>
         )}
 
-        {modelMenu ? (
+        {askingApiKeyFor ? (
+          <Box flexDirection="row">
+            <Box marginRight={1}>
+              <Text bold color="yellow">Enter API Key for {askingApiKeyFor} (Esc to cancel):</Text>
+            </Box>
+            <TextInput
+              value={apiKeyInput}
+              onChange={setApiKeyInput}
+              onSubmit={(keyInput) => {
+                if (keyInput.trim().length > 0) {
+                  const configService = container.resolve(ConfigService);
+                  configService.saveConfig({ provider: askingApiKeyFor, apiKey: keyInput.trim() });
+                  setChatLog(log => [...log, { role: 'system', text: `LLM Provider switched to: ${askingApiKeyFor}` }]);
+                  setAskingApiKeyFor('');
+                  setApiKeyInput('');
+                  setChatInput('');
+                }
+              }}
+            />
+          </Box>
+        ) : modelMenu ? (
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color="yellow">Select LLM Provider (Up/Down to navigate, Enter to select, Esc to cancel):</Text>
             {MODELS.map((m, index) => (
