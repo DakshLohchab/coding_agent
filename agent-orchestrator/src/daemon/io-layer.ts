@@ -1,8 +1,8 @@
 import { injectable, inject } from 'tsyringe';
 import { WebSocketServer, WebSocket } from 'ws';
-import { ILogger } from '../agents/interfaces';
+import { ILogger } from '../agents/interfaces.js';
 import { EventEmitter } from 'events';
-import { EventBroker } from '../services/event-broker';
+import { EventBroker } from '../services/event-broker.js';
 
 export interface IOMessage {
   type: 'prompt' | 'audio_stream' | 'cli_arg' | 'collision_resolution';

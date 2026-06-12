@@ -1,9 +1,9 @@
 import { setup, assign, fromPromise } from 'xstate';
-import { container } from '../di/container';
-import { AgentContext, AgentEvent } from '../types';
-import { IArchitectAgent, IExecutionAgent, IVerificationAgent, IDebateAgent, ILogger } from '../agents/interfaces';
-import { EventBroker } from '../services/event-broker';
-import { ContextCompressor } from '../services/context-compressor';
+import { container } from '../di/container.js';
+import { AgentContext, AgentEvent } from '../types.js';
+import { IArchitectAgent, IExecutionAgent, IVerificationAgent, IDebateAgent, ILogger } from '../agents/interfaces.js';
+import { EventBroker } from '../services/event-broker.js';
+import { ContextCompressor } from '../services/context-compressor.js';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 
@@ -115,15 +115,17 @@ export const orchestratorMachine = setup({
       on: {
         START: {
           target: 'architecting',
-          actions: assign({
-            prompt: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).prompt,
-            llmModel: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).model ?? 'openrouter',
-            compilationFailures: 0,
-            executionHistory: ['[SYSTEM] Agent orchestration started.'],
-            lastAgentMessage: ({ event }) => `Agent started with model ${(event as Extract<AgentEvent, { type: 'START' }>).model ?? 'openrouter'}.`, 
-            historyTokenCount: Math.ceil('[SYSTEM] Agent orchestration started.'.length / 4)
-          }),
-          actions: ['emitAgentMessage']
+          actions: [
+            assign({
+              prompt: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).prompt,
+              llmModel: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).model ?? 'openrouter',
+              compilationFailures: 0,
+              executionHistory: ['[SYSTEM] Agent orchestration started.'],
+              lastAgentMessage: ({ event }) => `Agent started with model ${(event as Extract<AgentEvent, { type: 'START' }>).model ?? 'openrouter'}.`, 
+              historyTokenCount: Math.ceil('[SYSTEM] Agent orchestration started.'.length / 4)
+            }),
+            'emitAgentMessage'
+          ]
         }
       }
     },
@@ -131,7 +133,7 @@ export const orchestratorMachine = setup({
       entry: [() => getEventBroker().emitAsync('agent.state_change', 'architecting')],
       invoke: {
         src: 'architectActor',
-        input: ({ context }) => context,
+        input: ({ context }: any) => context,
         onDone: {
           target: 'executing',
           actions: [
@@ -157,7 +159,7 @@ export const orchestratorMachine = setup({
       ],
       invoke: {
         src: 'executorActor',
-        input: ({ context }) => context,
+        input: ({ context }: any) => context,
         onDone: {
           target: 'verifying',
           actions: [
@@ -180,7 +182,7 @@ export const orchestratorMachine = setup({
       entry: [() => getEventBroker().emitAsync('agent.state_change', 'verifying')],
       invoke: {
         src: 'verifierActor',
-        input: ({ context }) => context,
+        input: ({ context }: any) => context,
         onDone: [
           {
             guard: ({ event }) => (event.output as any).success === true,
@@ -188,9 +190,9 @@ export const orchestratorMachine = setup({
             actions: [
               'applyWorktreePatch',
               assign({ 
-                verificationLogs: ({ event }) => (event.output as any).logs,
-                executionHistory: ({ context }) => [...context.executionHistory, `[VERIFIER] Success: ${(event.output as any).logs}`],
-                lastAgentMessage: ({ event }) => `Verification succeeded: ${(event.output as any).logs}`
+                verificationLogs: ({ event }: any) => (event.output as any).logs,
+                executionHistory: ({ context, event }: any) => [...context.executionHistory, `[VERIFIER] Success: ${(event.output as any).logs}`],
+                lastAgentMessage: ({ event }: any) => `Verification succeeded: ${(event.output as any).logs}`
               }),
               'emitAgentMessage',
               'compressHistoryIfNeeded'
@@ -240,7 +242,7 @@ export const orchestratorMachine = setup({
       entry: [() => getEventBroker().emitAsync('agent.state_change', 'debating')],
       invoke: {
         src: 'debateActor',
-        input: ({ context }) => context,
+        input: ({ context }: any) => context,
         onDone: {
           target: 'executing',
           actions: [

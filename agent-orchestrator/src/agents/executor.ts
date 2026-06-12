@@ -1,10 +1,10 @@
 import { injectable, inject } from 'tsyringe';
-import { IExecutionAgent, ILogger } from './interfaces';
-import { AgentContext } from '../types';
-import { ASTParser } from '../intelligence/ast-parser';
-import { ToolRegistry } from '../execution/tool-registry';
-import { ConfigService } from '../services/config';
-import { EventBroker } from '../services/event-broker';
+import { IExecutionAgent, ILogger } from './interfaces.js';
+import { AgentContext } from '../types.js';
+import { ASTParser } from '../intelligence/ast-parser.js';
+import { ToolRegistry } from '../execution/tool-registry.js';
+import { ConfigService } from '../services/config.js';
+import { EventBroker } from '../services/event-broker.js';
 
 export interface VirtualFile {
   path: string;

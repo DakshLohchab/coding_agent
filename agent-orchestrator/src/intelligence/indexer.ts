@@ -1,7 +1,7 @@
 import { injectable, inject } from 'tsyringe';
-import { ASTParser } from './ast-parser';
-import { VectorStore } from './vector-store';
-import { ILogger } from '../agents/interfaces';
+import { ASTParser } from './ast-parser.js';
+import { VectorStore } from './vector-store.js';
+import { ILogger } from '../agents/interfaces.js';
 
 @injectable()
 export class Indexer {

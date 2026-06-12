@@ -1,6 +1,6 @@
 import { injectable, inject } from 'tsyringe';
-import { ITool, JSONSchema } from '../tool-registry';
-import { ILogger } from '../../agents/interfaces';
+import { ITool, JSONSchema } from '../tool-registry.js';
+import { ILogger } from '../../agents/interfaces.js';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 

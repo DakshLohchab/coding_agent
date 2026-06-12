@@ -1,5 +1,5 @@
 import { injectable, inject } from 'tsyringe';
-import { ILogger } from '../agents/interfaces';
+import { ILogger } from '../agents/interfaces.js';
 import * as chokidar from 'chokidar';
 import { EventEmitter } from 'events';
 

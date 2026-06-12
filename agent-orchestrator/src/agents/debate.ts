@@ -1,6 +1,6 @@
 import { injectable, inject } from 'tsyringe';
-import { IDebateAgent, ILogger } from './interfaces';
-import { AgentContext } from '../types';
+import { IDebateAgent, ILogger } from './interfaces.js';
+import { AgentContext } from '../types.js';
 
 @injectable()
 export class DebateAgent implements IDebateAgent {

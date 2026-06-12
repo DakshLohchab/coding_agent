@@ -1,27 +1,27 @@
 import 'reflect-metadata';
 import { container } from 'tsyringe';
 
-import { Logger } from '../services/logger';
-import { ArchitectAgent } from '../agents/architect';
-import { ExecutionAgent } from '../agents/executor';
-import { VerificationAgent } from '../agents/verifier';
-import { DebateAgent } from '../agents/debate';
+import { Logger } from '../services/logger.js';
+import { ArchitectAgent } from '../agents/architect.js';
+import { ExecutionAgent } from '../agents/executor.js';
+import { VerificationAgent } from '../agents/verifier.js';
+import { DebateAgent } from '../agents/debate.js';
 
-import { ASTParser } from '../intelligence/ast-parser';
-import { VectorStore } from '../intelligence/vector-store';
-import { Indexer } from '../intelligence/indexer';
-import { RAGService } from '../intelligence/rag-service';
-import { FileWatcherDaemon } from '../intelligence/file-watcher';
+import { ASTParser } from '../intelligence/ast-parser.js';
+import { VectorStore } from '../intelligence/vector-store.js';
+import { Indexer } from '../intelligence/indexer.js';
+import { RAGService } from '../intelligence/rag-service.js';
+import { FileWatcherDaemon } from '../intelligence/file-watcher.js';
 
-import { ToolRegistry } from '../execution/tool-registry';
-import { NativeShellTool } from '../execution/tools/native-shell';
-import { AtomicGitTool } from '../execution/tools/atomic-git';
+import { ToolRegistry } from '../execution/tool-registry.js';
+import { NativeShellTool } from '../execution/tools/native-shell.js';
+import { AtomicGitTool } from '../execution/tools/atomic-git.js';
 
-import { IOLayer } from '../daemon/io-layer';
-import { CollisionDetector } from '../daemon/collision-detector';
-import { EventBroker } from '../services/event-broker';
-import { ContextCompressor } from '../services/context-compressor';
-import { ConfigService } from '../services/config';
+import { IOLayer } from '../daemon/io-layer.js';
+import { CollisionDetector } from '../daemon/collision-detector.js';
+import { EventBroker } from '../services/event-broker.js';
+import { ContextCompressor } from '../services/context-compressor.js';
+import { ConfigService } from '../services/config.js';
 
 // Core Services
 container.registerSingleton('ILogger', Logger);

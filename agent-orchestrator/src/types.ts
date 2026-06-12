@@ -9,6 +9,7 @@ export interface AgentContext {
   executionHistory: string[];
   historyTokenCount: number;
   lastAgentMessage: string | null;
+  totalRetries?: number;
 }
 
 export type AgentEvent =
@@ -17,4 +18,6 @@ export type AgentEvent =
   | { type: 'CODE_GENERATED'; codeDiff: string }
   | { type: 'VERIFICATION_SUCCESS' }
   | { type: 'VERIFICATION_FAILED'; logs: string }
-  | { type: 'FATAL_ERROR'; error: Error };
+  | { type: 'FATAL_ERROR'; error: Error }
+  | { type: 'PAUSE_FOR_COLLISION' }
+  | { type: 'RESUME_FROM_COLLISION'; resolution: string };

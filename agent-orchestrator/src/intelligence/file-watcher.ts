@@ -3,8 +3,8 @@ import * as chokidar from 'chokidar';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ILogger } from '../agents/interfaces';
-import { Indexer } from './indexer';
+import { ILogger } from '../agents/interfaces.js';
+import { Indexer } from './indexer.js';
 
 @injectable()
 export class FileWatcherDaemon {

@@ -1,5 +1,5 @@
 import { injectable } from 'tsyringe';
-import { ILogger } from '../agents/interfaces';
+import { ILogger } from '../agents/interfaces.js';
 
 @injectable()
 export class Logger implements ILogger {
@@ -11,5 +11,8 @@ export class Logger implements ILogger {
   }
   warn(message: string): void {
     console.warn(`[WARN] ${new Date().toISOString()}: ${message}`);
+  }
+  debug(message: string): void {
+    console.debug(`[DEBUG] ${new Date().toISOString()}: ${message}`);
   }
 }

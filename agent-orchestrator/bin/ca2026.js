@@ -7,16 +7,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const pkgDir  = join(__dirname, '..');
-const entryFile = join(pkgDir, 'src', 'index.tsx');
+const distEntry = join(pkgDir, 'dist', 'index.js');
+const tsc = join(pkgDir, 'node_modules', '.bin', 'tsc');
 
-// Use the local tsx binary (devDep) — esbuild honours emitDecoratorMetadata
-// Unlike `bun run`, which silently strips it and breaks tsyringe.
-const tsx = join(pkgDir, 'node_modules', '.bin', 'tsx');
-
-const result = spawnSync(tsx, [entryFile], {
+const buildResult = spawnSync(tsc, ['-p', pkgDir], {
     stdio: 'inherit',
     shell: true,
-    cwd: pkgDir   // run from the package root so tsx finds tsconfig.json
+    cwd: pkgDir
+});
+
+if (buildResult.status !== 0) {
+    process.exit(buildResult.status ?? 1);
+}
+
+const result = spawnSync(process.execPath, [distEntry], {
+    stdio: 'inherit',
+    cwd: pkgDir
 });
 
 process.exit(result.status ?? 0);

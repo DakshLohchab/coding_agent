@@ -1,6 +1,6 @@
 import { injectable, inject } from 'tsyringe';
-import { VectorStore } from './vector-store';
-import { ILogger } from '../agents/interfaces';
+import { VectorStore } from './vector-store.js';
+import { ILogger } from '../agents/interfaces.js';
 
 @injectable()
 export class RAGService {

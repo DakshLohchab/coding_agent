@@ -2,16 +2,16 @@ import 'reflect-metadata';
 import React from 'react';
 import { render } from 'ink';
 import { createActor } from 'xstate';
-import { orchestratorMachine } from './orchestrator/machine';
-import { container } from './di/container';
-import { ILogger } from './agents/interfaces';
-import { FileWatcherDaemon } from './intelligence/file-watcher';
-import { VectorStore } from './intelligence/vector-store';
-import { IOLayer } from './daemon/io-layer';
-import { CollisionDetector } from './daemon/collision-detector';
-import { EventBroker } from './services/event-broker';
-import { OrchestratorUI } from './ui/ink-app';
-import { ConfigService } from './services/config';
+import { orchestratorMachine } from './orchestrator/machine.js';
+import { container } from './di/container.js';
+import { ILogger } from './agents/interfaces.js';
+import { FileWatcherDaemon } from './intelligence/file-watcher.js';
+import { VectorStore } from './intelligence/vector-store.js';
+import { IOLayer } from './daemon/io-layer.js';
+import { CollisionDetector } from './daemon/collision-detector.js';
+import { EventBroker } from './services/event-broker.js';
+import { OrchestratorUI } from './ui/ink-app.js';
+import { ConfigService } from './services/config.js';
 
 async function bootstrap() {
   // 1. Move ALL container resolutions INSIDE the async function to prevent module race conditions

@@ -5,8 +5,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "tsx src/index.tsx"
+    "build": "tsc",
+    "start": "npm run build && node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +28,7 @@
     "xstate": "^5.32.0"
   },
   "devDependencies": {
+    "@types/ink-gradient": "^2.0.4",
     "@types/node": "^25.9.3",
     "@types/react": "^19.2.17",
     "@types/ws": "^8.18.1",

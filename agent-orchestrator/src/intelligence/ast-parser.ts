@@ -69,7 +69,7 @@ export class ASTParser {
           nodes.push({
             id: `${filePath}_${node.type}_${nextClass}`,
             type: node.type === 'class_declaration' ? 'class' : 'interface',
-            name: nextClass,
+            name: nextClass as string,
             code: node.text,
             startLine: node.startPosition.row,
             endLine: node.endPosition.row,

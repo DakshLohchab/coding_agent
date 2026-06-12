@@ -1,4 +1,4 @@
-import { AgentContext } from '../types';
+import { AgentContext } from '../types.js';
 
 export interface IArchitectAgent {
   analyzeAndPlan(context: AgentContext): Promise<string>;

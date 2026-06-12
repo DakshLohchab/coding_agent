@@ -1,7 +1,7 @@
 import { injectable, inject } from 'tsyringe';
 import { ChromaClient, Collection } from 'chromadb';
-import { ILogger } from '../agents/interfaces';
-import { ASTNodeData } from './ast-parser';
+import { ILogger } from '../agents/interfaces.js';
+import { ASTNodeData } from './ast-parser.js';
 
 @injectable()
 export class VectorStore {

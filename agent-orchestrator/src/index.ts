@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 import { createActor } from 'xstate';
-import { orchestratorMachine } from './orchestrator/machine';
-import { container } from './di/container';
-import { ILogger } from './agents/interfaces';
-import { FileWatcherDaemon } from './intelligence/file-watcher';
-import { VectorStore } from './intelligence/vector-store';
+import { orchestratorMachine } from './orchestrator/machine.js';
+import { container } from './di/container.js';
+import { ILogger } from './agents/interfaces.js';
+import { FileWatcherDaemon } from './intelligence/file-watcher.js';
+import { VectorStore } from './intelligence/vector-store.js';
 
 const logger = container.resolve<ILogger>('ILogger');
 const fileWatcher = container.resolve(FileWatcherDaemon);
@@ -17,7 +17,7 @@ async function bootstrap() {
   await vectorStore.initialize();
   fileWatcher.start(process.cwd() + '/src');
 
-  const actor = createActor(orchestratorMachine);
+  const actor = createActor(orchestratorMachine as any) as any;
 
   actor.subscribe((state) => {
     logger.info(`[State Transition] Current State: ${state.value}`);

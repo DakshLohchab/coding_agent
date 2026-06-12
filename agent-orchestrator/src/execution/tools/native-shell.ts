@@ -2,8 +2,8 @@ import { injectable, inject } from 'tsyringe';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ITool, JSONSchema } from '../tool-registry';
-import { ILogger } from '../../agents/interfaces';
+import { ITool, JSONSchema } from '../tool-registry.js';
+import { ILogger } from '../../agents/interfaces.js';
 
 export interface ExtractedError {
   file: string;
@@ -46,7 +46,7 @@ export class NativeShellTool implements ITool {
       ], { cwd });
     } catch (spawnErr) {
       this.logger.error('NativeShell failed to spawn process', spawnErr);
-      return { success: false, error: spawnErr.message };
+      return { success: false, error: (spawnErr as Error).message };
     }
 
     if (args.background) {
@@ -56,7 +56,7 @@ export class NativeShellTool implements ITool {
         return { status: 'background', pid: proc.pid };
       } catch (e) {
         this.logger.warn('Failed to detach background process', e);
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
 
@@ -64,10 +64,10 @@ export class NativeShellTool implements ITool {
       let stdout = '';
       let stderr = '';
 
-      if (proc.stdout) proc.stdout.on('data', (data) => stdout += data.toString());
-      if (proc.stderr) proc.stderr.on('data', (data) => stderr += data.toString());
+      if (proc.stdout) proc.stdout.on('data', (data: any) => stdout += data.toString());
+      if (proc.stderr) proc.stderr.on('data', (data: any) => stderr += data.toString());
 
-      proc.on('close', (code) => {
+      proc.on('close', (code: any) => {
         if (code !== 0) {
           this.logger.warn(`NativeShell command failed with code ${code}. Extracting stack traces...`);
           const extractedErrors = this.extractStackTraces(stderr || stdout);
@@ -78,7 +78,7 @@ export class NativeShellTool implements ITool {
         }
       });
 
-      proc.on('error', (err) => {
+      proc.on('error', (err: any) => {
         this.logger.error('NativeShell process spawn error', err);
         // Resolve with structured failure instead of rejecting to avoid crashing orchestrator actors
         resolve({ success: false, error: err.message });

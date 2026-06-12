@@ -3,8 +3,8 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import Gradient from 'ink-gradient';
-import { container } from '../di/container';
-import { ConfigService } from '../services/config';
+import { container } from '../di/container.js';
+import { ConfigService } from '../services/config.js';
 
 const COMMANDS = [
   { name: '/model', desc: 'Switch LLM provider' },

@@ -1,7 +1,7 @@
 import { injectable, inject } from 'tsyringe';
-import { IVerificationAgent, ILogger } from './interfaces';
-import { AgentContext } from '../types';
-import { NativeShellTool } from '../execution/tools/native-shell';
+import { IVerificationAgent, ILogger } from './interfaces.js';
+import { AgentContext } from '../types.js';
+import { NativeShellTool } from '../execution/tools/native-shell.js';
 
 @injectable()
 export class VerificationAgent implements IVerificationAgent {

@@ -1,10 +1,10 @@
 import { injectable, inject } from 'tsyringe';
-import { IArchitectAgent, ILogger } from './interfaces';
-import { AgentContext } from '../types';
-import { RAGService } from '../intelligence/rag-service';
-import { ToolRegistry } from '../execution/tool-registry';
-import { ConfigService } from '../services/config';
-import { EventBroker } from '../services/event-broker';
+import { IArchitectAgent, ILogger } from './interfaces.js';
+import { AgentContext } from '../types.js';
+import { RAGService } from '../intelligence/rag-service.js';
+import { ToolRegistry } from '../execution/tool-registry.js';
+import { ConfigService } from '../services/config.js';
+import { EventBroker } from '../services/event-broker.js';
 
 @injectable()
 export class ArchitectAgent implements IArchitectAgent {
@@ -23,7 +23,7 @@ export class ArchitectAgent implements IArchitectAgent {
     // RAG Pipeline: Pull deeply coupled dependencies into context
     const ragContext = await this.ragService.retrieveContext(context.prompt);
     
-    const messages = [
+    const messages: any[] = [
       { role: 'system', content: 'You are the Architect Agent.' },
       { role: 'user', content: `Prompt: ${context.prompt}\nContext: ${ragContext}` }
     ];
