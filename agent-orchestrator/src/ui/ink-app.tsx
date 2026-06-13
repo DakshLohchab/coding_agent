@@ -30,8 +30,10 @@ const AGENT_SUB_SYSTEMS: Record<string, { label: string; color: string; glyph: s
 export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const configService = container.resolve(ConfigService);
   const initialConfig = configService.getConfig();
-  const [currentModel, setCurrentModel] = useState(initialConfig?.provider || 'Not Set');
+  const [currentModel, setCurrentModel] = useState(initialConfig?.modelName ? `${initialConfig.provider} (${initialConfig.modelName})` : (initialConfig?.provider || 'Not Set'));
   const [askingApiKeyFor, setAskingApiKeyFor] = useState('');
+  const [askingModelNameFor, setAskingModelNameFor] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState('');
   const [modelMenu, setModelMenu] = useState(false);
   const MODELS = ['Gemini API', 'Anthropic Claude', 'OpenAI', 'OpenRouter', 'Fireworks'];
 
@@ -48,7 +50,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const [collisionStatus, setCollisionStatus] = useState('NOMINAL');
 
   const filteredCommands = COMMANDS.filter(c => c.name.startsWith(chatInput.toLowerCase()));
-  const showAutocomplete = chatInput.startsWith('/') && !modelMenu && !askingApiKeyFor;
+  const showAutocomplete = chatInput.startsWith('/') && !modelMenu && !askingApiKeyFor && !askingModelNameFor;
 
   useEffect(() => {
     // Listener setups map clean state directly from your eventBroker
@@ -121,11 +123,31 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const handleSubmit = (query: string) => {
     if (askingApiKeyFor) {
       if (query.trim()) {
-        configService.saveConfig({ provider: askingApiKeyFor, apiKey: query.trim() });
-        setCurrentModel(askingApiKeyFor);
-        setChatLog(log => [...log, { role: 'system', text: `LLM provider changed to ${askingApiKeyFor}.`, timestamp: new Date() }]);
+        if (askingApiKeyFor === 'OpenRouter') {
+          setApiKeyInput(query.trim());
+          setAskingModelNameFor(askingApiKeyFor);
+          setAskingApiKeyFor('');
+          setChatInput('');
+          return;
+        } else {
+          configService.saveConfig({ provider: askingApiKeyFor, apiKey: query.trim() });
+          setCurrentModel(askingApiKeyFor);
+          setChatLog(log => [...log, { role: 'system', text: `LLM provider changed to ${askingApiKeyFor}.`, timestamp: new Date() }]);
+        }
       }
       setAskingApiKeyFor('');
+      setChatInput('');
+      return;
+    }
+
+    if (askingModelNameFor) {
+      if (query.trim()) {
+        configService.saveConfig({ provider: askingModelNameFor, apiKey: apiKeyInput, modelName: query.trim() });
+        setCurrentModel(`${askingModelNameFor} (${query.trim()})`);
+        setChatLog(log => [...log, { role: 'system', text: `LLM provider changed to ${askingModelNameFor} (${query.trim()}).`, timestamp: new Date() }]);
+      }
+      setAskingModelNameFor('');
+      setApiKeyInput('');
       setChatInput('');
       return;
     }
@@ -216,7 +238,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
           )}
 
           {/* Unified Input/Command Context Area */}
-          <Box flexDirection="column" borderStyle="single" borderColor={showAutocomplete || modelMenu || askingApiKeyFor ? "yellow" : "gray"} paddingX={1}>
+          <Box flexDirection="column" borderStyle="single" borderColor={showAutocomplete || modelMenu || askingApiKeyFor || askingModelNameFor ? "yellow" : "gray"} paddingX={1}>
             {showAutocomplete && (
               <Box flexDirection="column" marginBottom={1} paddingBottom={1} borderBottom={true} borderStyle="single" borderColor="gray">
                 <Text bold color="yellow">💡 SUGGESTED SUB-SYSTEM CORE OPERATIONS</Text>
@@ -250,6 +272,13 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
                 <Text color="gray" dimColor>Your key will be securely saved and not asked again.</Text>
               </Box>
             )}
+
+            {askingModelNameFor && (
+              <Box flexDirection="column" marginBottom={1} paddingBottom={1} borderBottom={true} borderStyle="single" borderColor="gray">
+                <Text bold color="yellow">🧠 ENTER OPENROUTER MODEL NAME</Text>
+                <Text color="gray" dimColor>Example: "anthropic/claude-3.5-sonnet"</Text>
+              </Box>
+            )}
             
             <Box flexDirection="row" gap={1} alignItems="center">
               <Text bold color="cyanBright">❯</Text>
@@ -258,7 +287,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
                 onChange={setChatInput}
                 onSubmit={handleSubmit}
                 mask={askingApiKeyFor ? "*" : undefined}
-                placeholder={askingApiKeyFor ? "Paste API key..." : "Awaiting prompt description or token operation..."}
+                placeholder={askingApiKeyFor ? "Paste API key..." : askingModelNameFor ? "Type model name..." : "Awaiting prompt description or token operation..."}
               />
             </Box>
           </Box>

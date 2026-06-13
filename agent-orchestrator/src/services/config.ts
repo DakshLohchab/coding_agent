@@ -7,6 +7,7 @@ import * as readline from 'readline/promises';
 export interface ProviderConfig {
   provider: string;
   apiKey: string;
+  modelName?: string;
 }
 
 @injectable()
