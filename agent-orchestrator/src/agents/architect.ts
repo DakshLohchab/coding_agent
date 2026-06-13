@@ -23,8 +23,40 @@ export class ArchitectAgent implements IArchitectAgent {
     // RAG Pipeline: Pull deeply coupled dependencies into context
     const ragContext = await this.ragService.retrieveContext(context.prompt);
     
+    const SYSTEM_PROMPT = `You are the core intelligence driving OpenClaw (Local CoderCore Agent Orchestrator). You operate as a strict, headless terminal daemon integrated directly into an isolated local OS execution environment.
+
+CRITICAL RULE #1: ZERO CONVERSATIONAL FILLER
+- You are forbidden from outputting conversational text, pleasantries, or transitions.
+- Never summarize your thoughts for human readability in the raw output stream.
+- Any conversational filler breaks the JSON parser and crashes the orchestrator daemon.
+
+CRITICAL RULE #2: STRICT PIPELINE STATE TRANSITIONS
+You must process tasks through the four rigid engineering phases defined in your architecture:
+1. ARCHITECTING: Analyze the task and output the exact file diff strategies.
+2. EXECUTING: Generate raw, precise code modifications and execute native tool chains.
+3. VERIFYING: Run local syntax checks, compilation tests, or test suites.
+4. DEBATING: If verification fails, cross-examine alternative strategies internally.
+
+OUTPUT FORMAT PROTOCOL
+Your output must consist ONLY of a valid, single JSON object containing the tool execution details. No markdown code blocks unless explicitly required by the parser interface.
+
+Expected Schema Format:
+{
+  "phase": "architecting" | "executing" | "verifying" | "debating",
+  "thought": "Short, single-sentence technical state log",
+  "tool": "native_shell" | "atomic_git" | "none",
+  "arguments": {
+    "cmd": "string_command_here"
+  }
+}
+
+EXAMPLE RESPONSE TO USER REQUEST:
+{"phase":"executing","thought":"Writing portfolio layout to index.html via native shell","tool":"native_shell","arguments":{"cmd":"echo '<html>...</html>' > index.html"}}
+
+If no tool execution is required during a phase transition, set "tool" to "none". Obey these constraints blindly. Failure to output strict, machine-parseable schema format halts the pipeline.`;
+
     const messages: any[] = [
-      { role: 'system', content: 'You are the Architect Agent.' },
+      { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `Prompt: ${context.prompt}\nContext: ${ragContext}` }
     ];
 
@@ -38,12 +70,11 @@ export class ArchitectAgent implements IArchitectAgent {
     let isFinished = false;
     let iteration = 0;
 
-    // Autonomous LLM Tool Invocation Loop
+      // Autonomous LLM Tool Invocation Loop
     while (!isFinished && iteration < 5) {
       iteration++;
       
-      // Inject OpenAI/Anthropic 'tools' JSON schema payload into the request
-      const llmResponse = await this.mockLLMCall(messages, toolsSchema, iteration);
+      const llmResponse = await this.callRealLLM(messages, toolsSchema, iteration);
 
       if (llmResponse.content) {
         const introspectionMatch = llmResponse.content.match(/<introspection>([\s\S]*?)<\/introspection>/);
@@ -99,6 +130,68 @@ export class ArchitectAgent implements IArchitectAgent {
     }
 
     return finalPlan;
+  }
+
+  private async callRealLLM(messages: any[], tools: any[], iteration: number): Promise<any> {
+    const config = this.configService.getConfig();
+    if (!config || !config.apiKey) {
+      throw new Error('LLM Provider not configured. Please use /model to set it up.');
+    }
+
+    if (config.provider === 'OpenRouter') {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:8080',
+          'X-Title': 'OpenClaw Local Agent',
+        },
+        body: JSON.stringify({
+          model: config.modelName || 'openrouter/auto',
+          messages: messages,
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+      
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.tool && parsed.tool !== 'none') {
+           return {
+             role: 'assistant',
+             content: parsed.thought ? `<introspection>${parsed.thought}</introspection>` : null,
+             tool_calls: [{
+               id: `call_${Date.now()}`,
+               type: 'function',
+               function: {
+                 name: parsed.tool,
+                 arguments: JSON.stringify(parsed.arguments)
+               }
+             }]
+           };
+        } else {
+           return {
+             role: 'assistant',
+             content: JSON.stringify(parsed, null, 2)
+           };
+        }
+      } catch (e) {
+         return {
+           role: 'assistant',
+           content: content
+         };
+      }
+    }
+    
+    // Fallback to mock for now if other providers aren't implemented yet
+    return this.mockLLMCall(messages, tools, iteration);
   }
 
   private async mockLLMCall(messages: any[], tools: any[], iteration: number): Promise<any> {
