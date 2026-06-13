@@ -188,7 +188,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
 
       {/* 3. Live Status Panel (only when active) */}
       {stateValue !== 'idle' && stateValue !== 'done' && stateValue !== 'failed' && (
-        <Box borderStyle="round" borderColor="yellow" padding={1} flexDirection="column" marginBottom={1} marginX={1}>
+        <Box borderStyle="round" borderColor="yellow" padding={1} flexDirection="column" marginBottom={1} width="100%">
           <Box flexDirection="row">
             {isSubmitting && (
               <Box marginRight={1}>
@@ -206,7 +206,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
       )}
 
       {/* 4. Input Panel with Autocomplete */}
-      <Box borderStyle="bold" borderColor="blue" paddingX={1} paddingY={0} flexDirection="column">
+      <Box borderStyle="bold" borderColor="blue" paddingX={1} paddingY={0} flexDirection="column" width="100%">
         {showAutocomplete && (
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color="yellow">Available Commands:</Text>
