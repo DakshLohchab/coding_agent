@@ -5,6 +5,8 @@ import { ASTParser } from '../intelligence/ast-parser.js';
 import { ToolRegistry } from '../execution/tool-registry.js';
 import { ConfigService } from '../services/config.js';
 import { EventBroker } from '../services/event-broker.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface VirtualFile {
   path: string;
@@ -69,14 +71,14 @@ export class ExecutionAgent implements IExecutionAgent {
             const toolOutput = await this.toolRegistry.executeTool(name, parsedArgs);
             
             messages.push({ 
-              role: 'tool_result', 
+              role: 'tool', 
               tool_call_id: toolCall.id, 
               name: name,
               content: JSON.stringify(toolOutput)
             });
           } catch (err: any) {
             messages.push({ 
-              role: 'tool_result', 
+              role: 'tool', 
               tool_call_id: toolCall.id, 
               name: name,
               content: `Tool Execution Error: ${err.message}`
@@ -117,6 +119,12 @@ export class ExecutionAgent implements IExecutionAgent {
         
         let finalOutput = '';
         for (const vf of virtualFiles) {
+          const workspacePath = path.join('.agent-workspace', vf.path);
+          const dir = path.dirname(workspacePath);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          fs.writeFileSync(workspacePath, vf.content);
           finalOutput += `<file path="${vf.path}">\n${vf.content}\n</file>\n`;
         }
         return finalOutput;

@@ -52,6 +52,18 @@ export const orchestratorMachine = setup({
     setupWorktree: () => {
       if (!fs.existsSync('.agent-workspace')) {
         try {
+          // Ensure it is a git repository with at least one commit
+          try {
+            execSync('git rev-parse HEAD', { stdio: 'ignore' });
+          } catch (e) {
+            execSync('git init', { stdio: 'ignore' });
+            try {
+              execSync('git config user.name "OpenClaw" && git config user.email "openclaw@local"', { stdio: 'ignore' });
+            } catch (configErr) {}
+            execSync('git add .', { stdio: 'ignore' });
+            execSync('git commit --allow-empty -m "Initial commit for agent workspace"', { stdio: 'ignore' });
+          }
+
           try { execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' }); } catch (e) {}
           execSync('git worktree add .agent-workspace -f', { stdio: 'ignore' });
           getLogger().info('Created isolated git worktree at .agent-workspace');

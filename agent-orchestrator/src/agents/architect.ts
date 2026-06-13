@@ -105,14 +105,14 @@ If no tool execution is required during a phase transition, set "tool" to "none"
             
             // Capture the tool's output and append it as a 'tool_result' role
             messages.push({ 
-              role: 'tool_result', 
+              role: 'tool', 
               tool_call_id: toolCall.id, 
               name: name,
               content: JSON.stringify(toolOutput)
             });
           } catch (err: any) {
             messages.push({ 
-              role: 'tool_result', 
+              role: 'tool', 
               tool_call_id: toolCall.id, 
               name: name,
               content: `Tool Execution Error: ${err.message}`
@@ -150,12 +150,14 @@ If no tool execution is required during a phase transition, set "tool" to "none"
         body: JSON.stringify({
           model: config.modelName || 'openrouter/auto',
           messages: messages,
+          ...(tools && tools.length > 0 ? { tools } : {}),
           response_format: { type: 'json_object' }
         })
       });
 
       if (!response.ok) {
-        throw new Error(`OpenRouter API error: ${response.statusText}`);
+        const errText = await response.text();
+        throw new Error(`OpenRouter API error: ${response.statusText} - ${errText}`);
       }
 
       const data = await response.json();
