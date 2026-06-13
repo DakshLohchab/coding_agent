@@ -8,6 +8,7 @@ import { ConfigService } from '../services/config.js';
 
 const COMMANDS = [
   { name: '/help', desc: 'Show developer commands' },
+  { name: '/model', desc: 'Switch LLM Provider and set API Key' },
   { name: '/skills', desc: 'Query active tool definitions' },
   { name: '/clear', desc: 'Wipe console buffer' },
   { name: '/index', desc: 'Force rebuild codebase AST map' },
@@ -27,6 +28,13 @@ const AGENT_SUB_SYSTEMS: Record<string, { label: string; color: string; glyph: s
 };
 
 export const OrchestratorUI = ({ eventBroker, actor }: any) => {
+  const configService = container.resolve(ConfigService);
+  const initialConfig = configService.getConfig();
+  const [currentModel, setCurrentModel] = useState(initialConfig?.provider || 'Not Set');
+  const [askingApiKeyFor, setAskingApiKeyFor] = useState('');
+  const [modelMenu, setModelMenu] = useState(false);
+  const MODELS = ['Gemini API', 'Anthropic Claude', 'OpenAI', 'OpenRouter', 'Fireworks'];
+
   const [stateValue, setStateValue] = useState('idle');
   const [chatLog, setChatLog] = useState<{ role: string; text: string; summary?: any; timestamp?: Date }[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -40,7 +48,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const [collisionStatus, setCollisionStatus] = useState('NOMINAL');
 
   const filteredCommands = COMMANDS.filter(c => c.name.startsWith(chatInput.toLowerCase()));
-  const showAutocomplete = chatInput.startsWith('/');
+  const showAutocomplete = chatInput.startsWith('/') && !modelMenu && !askingApiKeyFor;
 
   useEffect(() => {
     // Listener setups map clean state directly from your eventBroker
@@ -81,10 +89,22 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
       } else if (key.downArrow) {
         setSelectedIndex(prev => Math.min(filteredCommands.length - 1, prev + 1));
       }
+    } else if (modelMenu) {
+      if (key.upArrow) {
+        setSelectedIndex(prev => Math.max(0, prev - 1));
+      } else if (key.downArrow) {
+        setSelectedIndex(prev => Math.min(MODELS.length - 1, prev + 1));
+      }
     }
-  }, { isActive: showAutocomplete });
+  }, { isActive: showAutocomplete || modelMenu });
 
   const executeCommand = (cmd: string) => {
+    if (cmd === '/model') {
+      setModelMenu(true);
+      setChatInput('');
+      setSelectedIndex(0);
+      return;
+    }
     if (cmd === '/clear') {
       setChatLog([]);
     } else if (cmd === '/exit') {
@@ -99,6 +119,25 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   };
 
   const handleSubmit = (query: string) => {
+    if (askingApiKeyFor) {
+      if (query.trim()) {
+        configService.saveConfig({ provider: askingApiKeyFor, apiKey: query.trim() });
+        setCurrentModel(askingApiKeyFor);
+        setChatLog(log => [...log, { role: 'system', text: `LLM provider changed to ${askingApiKeyFor}.`, timestamp: new Date() }]);
+      }
+      setAskingApiKeyFor('');
+      setChatInput('');
+      return;
+    }
+
+    if (modelMenu) {
+      const selectedModel = MODELS[selectedIndex];
+      setAskingApiKeyFor(selectedModel);
+      setModelMenu(false);
+      setChatInput('');
+      return;
+    }
+
     if (showAutocomplete && filteredCommands.length > 0) {
       executeCommand(filteredCommands[selectedIndex].name);
       return;
@@ -130,7 +169,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
         <Box flexDirection="row" alignItems="center" gap={2}>
           <Box flexDirection="row" alignItems="center" gap={1}>
             <Text color="green">●</Text>
-            <Text color="gray" dimColor>LOCAL LLM PIPELINE</Text>
+            <Text color="white" bold>LLM: {currentModel}</Text>
           </Box>
           <Box paddingX={1} borderStyle="single" borderColor={sysMeta.color}>
             <Text color={sysMeta.color} bold>{sysMeta.glyph} {sysMeta.label}</Text>
@@ -177,7 +216,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
           )}
 
           {/* Unified Input/Command Context Area */}
-          <Box flexDirection="column" borderStyle="single" borderColor={showAutocomplete ? "yellow" : "gray"} paddingX={1}>
+          <Box flexDirection="column" borderStyle="single" borderColor={showAutocomplete || modelMenu || askingApiKeyFor ? "yellow" : "gray"} paddingX={1}>
             {showAutocomplete && (
               <Box flexDirection="column" marginBottom={1} paddingBottom={1} borderBottom={true} borderStyle="single" borderColor="gray">
                 <Text bold color="yellow">💡 SUGGESTED SUB-SYSTEM CORE OPERATIONS</Text>
@@ -191,6 +230,26 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
                 ))}
               </Box>
             )}
+
+            {modelMenu && (
+              <Box flexDirection="column" marginBottom={1} paddingBottom={1} borderBottom={true} borderStyle="single" borderColor="gray">
+                <Text bold color="yellow">💡 SELECT LLM PROVIDER</Text>
+                {MODELS.map((m, index) => (
+                  <Box key={m} flexDirection="row" gap={2}>
+                    <Text color={index === selectedIndex ? 'cyanBright' : 'white'} bold={index === selectedIndex}>
+                      {index === selectedIndex ? '▶' : ' '} {m}
+                    </Text>
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            {askingApiKeyFor && (
+              <Box flexDirection="column" marginBottom={1} paddingBottom={1} borderBottom={true} borderStyle="single" borderColor="gray">
+                <Text bold color="yellow">🔑 ENTER API KEY FOR {askingApiKeyFor.toUpperCase()}</Text>
+                <Text color="gray" dimColor>Your key will be securely saved and not asked again.</Text>
+              </Box>
+            )}
             
             <Box flexDirection="row" gap={1} alignItems="center">
               <Text bold color="cyanBright">❯</Text>
@@ -198,7 +257,8 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
                 value={chatInput}
                 onChange={setChatInput}
                 onSubmit={handleSubmit}
-                placeholder="Awaiting prompt description or token operation..."
+                mask={askingApiKeyFor ? "*" : undefined}
+                placeholder={askingApiKeyFor ? "Paste API key..." : "Awaiting prompt description or token operation..."}
               />
             </Box>
           </Box>
