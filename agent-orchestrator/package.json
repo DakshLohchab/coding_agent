@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@chroma-core/default-embed": "^0.1.9",
     "chokidar": "^3.6.0",
     "chromadb": "^3.4.3",
     "ink": "^6.8.0",
