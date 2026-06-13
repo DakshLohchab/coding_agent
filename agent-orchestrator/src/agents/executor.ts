@@ -43,7 +43,7 @@ export class ExecutionAgent implements IExecutionAgent {
 
     while (!isFinished && iteration < 5) {
       iteration++;
-      const llmResponse = await this.mockLLMCall(messages, toolsSchema, iteration);
+      const llmResponse = await this.callRealLLM(messages, toolsSchema, iteration);
 
       if (llmResponse.content) {
         const introspectionMatch = llmResponse.content.match(/<introspection>([\s\S]*?)<\/introspection>/);
@@ -109,8 +109,21 @@ export class ExecutionAgent implements IExecutionAgent {
           
           this.logger.info(`Execution Agent: Ghost Sandbox triggered internal LLM exception. Prompting self to fix syntax...`);
           
-          // Simulated LLM self-correction
-          vFile.content = vFile.content.replace('console.log("Missing closing parenthesis"', 'console.log("Missing closing parenthesis")');
+          // LLM self-correction
+          const fixMessages = [
+            ...messages,
+            { role: 'assistant', content: vFile.content },
+            { role: 'user', content: `Syntax Error detected in ${vFile.path}:\n${validation.errors.join(' | ')}\n\nPlease auto-correct the code and output the full corrected <file> block for ${vFile.path}.` }
+          ];
+          const fixResponse = await this.callRealLLM(fixMessages, toolsSchema, 1);
+          
+          const newFiles = this.extractVirtualFiles(fixResponse.content || '');
+          const fixedFile = newFiles.find(f => f.path === vFile.path);
+          if (fixedFile) {
+            vFile.content = fixedFile.content;
+          } else {
+            vFile.content = fixResponse.content || '';
+          }
         }
       }
       
@@ -133,6 +146,40 @@ export class ExecutionAgent implements IExecutionAgent {
     }
 
     throw new Error('Execution Agent failed to generate syntactically valid code after internal retries.');
+  }
+
+  private async callRealLLM(messages: any[], tools: any[], iteration: number): Promise<any> {
+    const config = this.configService.getConfig();
+    if (!config || !config.apiKey) {
+      throw new Error('LLM Provider not configured. Please use /model to set it up.');
+    }
+
+    if (config.provider === 'OpenRouter') {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:8080',
+          'X-Title': 'OpenClaw Local Agent',
+        },
+        body: JSON.stringify({
+          model: config.modelName || 'openrouter/auto',
+          messages: messages,
+          ...(tools && tools.length > 0 ? { tools } : {})
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter API error: ${response.statusText} - ${errText}`);
+      }
+
+      const data = await response.json();
+      return data.choices[0].message;
+    }
+    
+    return this.mockLLMCall(messages, tools, iteration);
   }
 
   private async mockLLMCall(messages: any[], tools: any[], iteration: number): Promise<any> {

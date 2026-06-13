@@ -214,7 +214,7 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
             )}
 
             {chatLog.slice(-10).map((msg, index) => (
-              <Box key={index} marginTop={0} marginBottom={1} flexDirection="column">
+              <Box key={index} marginTop={0} marginBottom={1} flexDirection="column" paddingX={1}>
                 <Box flexDirection="row" gap={1}>
                   <Text bold color={msg.role === 'agent' ? 'green' : msg.role === 'system' ? 'yellow' : 'cyan'}>
                     {msg.role === 'agent' ? '🤖 CLAW' : msg.role === 'system' ? '⚡ SYS' : '👤 YOU'}
@@ -223,7 +223,9 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
                     [{msg.timestamp?.toLocaleTimeString()}]
                   </Text>
                 </Box>
-                <Text color="white">  {msg.text}</Text>
+                <Box flexDirection="column" paddingLeft={2}>
+                  <Text color="white" wrap="wrap">{msg.text}</Text>
+                </Box>
               </Box>
             ))}
           </Box>

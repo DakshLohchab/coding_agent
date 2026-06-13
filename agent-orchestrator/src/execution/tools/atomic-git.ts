@@ -41,7 +41,10 @@ export class AtomicGitTool implements ITool {
       switch (args.action) {
         case 'create_worktree':
           try { await this.execGit(['worktree', 'remove', this.worktreePath, '--force']); } catch {}
-          await this.execGit(['worktree', 'add', this.worktreePath, '-f']);
+          if (fs.existsSync(this.worktreePath)) {
+             try { fs.rmSync(this.worktreePath, { recursive: true, force: true }); } catch (e) {}
+          }
+          await this.execGit(['worktree', 'add', '-d', this.worktreePath, '-f']);
           this.logger.info(`[AtomicGit] Created sandbox worktree at ${this.worktreePath}`);
           return { success: true, worktree: this.worktreePath };
 

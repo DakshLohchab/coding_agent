@@ -21,8 +21,7 @@ if (buildResult.status !== 0) {
 }
 
 const result = spawnSync(process.execPath, [distEntry], {
-    stdio: 'inherit',
-    cwd: pkgDir
+    stdio: 'inherit'
 });
 
 process.exit(result.status ?? 0);

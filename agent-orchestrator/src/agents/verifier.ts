@@ -13,18 +13,10 @@ export class VerificationAgent implements IVerificationAgent {
   async verify(context: AgentContext): Promise<{ success: boolean; logs: string }> {
     this.logger.info('Verification Agent: Running linters, compilers, and tests...');
     
-    // Execute a real shell command verification (e.g., TS Compiler or Jest)
-    // To simulate a deterministic test failure payload for testing, we will trigger a bad TS evaluation.
-    // In production, this would be `npx tsc --noEmit` or `npm test`.
-    
-    let result;
-    if (context.compilationFailures < 2) {
-      // Simulate an error for the sake of the orchestration loop tests
-      result = await this.nativeShell.execute({ script: 'npx tsc src/non_existent.ts' }); 
-      // Or we can mock the payload if tsc doesn't find the file, but let's assume it runs tests normally.
-    } else {
-      result = { success: true, command: 'npm test' };
-    }
+    // Determine the verification command based on the workspace
+    // Usually we would read the package.json to see if 'test' or 'build' exists
+    const script = 'npm run build --if-present && npm test --if-present';
+    const result = await this.nativeShell.execute({ script });
 
     if (result.success) {
       this.logger.info('Verification Agent: All checks passed successfully.');

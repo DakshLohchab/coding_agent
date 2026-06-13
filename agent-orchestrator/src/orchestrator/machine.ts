@@ -50,26 +50,27 @@ export const orchestratorMachine = setup({
       }
     },
     setupWorktree: () => {
-      if (!fs.existsSync('.agent-workspace')) {
+      try {
+        // Ensure it is a git repository with at least one commit
         try {
-          // Ensure it is a git repository with at least one commit
+          execSync('git rev-parse HEAD', { stdio: 'ignore' });
+        } catch (e) {
+          execSync('git init', { stdio: 'ignore' });
           try {
-            execSync('git rev-parse HEAD', { stdio: 'ignore' });
-          } catch (e) {
-            execSync('git init', { stdio: 'ignore' });
-            try {
-              execSync('git config user.name "OpenClaw" && git config user.email "openclaw@local"', { stdio: 'ignore' });
-            } catch (configErr) {}
-            execSync('git add .', { stdio: 'ignore' });
-            execSync('git commit --allow-empty -m "Initial commit for agent workspace"', { stdio: 'ignore' });
-          }
-
-          try { execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' }); } catch (e) {}
-          execSync('git worktree add .agent-workspace -f', { stdio: 'ignore' });
-          getLogger().info('Created isolated git worktree at .agent-workspace');
-        } catch (e: any) {
-          getLogger().error(`Failed to setup worktree: ${e.message}`);
+            execSync('git config user.name "OpenClaw" && git config user.email "openclaw@local"', { stdio: 'ignore' });
+          } catch (configErr) {}
+          execSync('git add .', { stdio: 'ignore' });
+          execSync('git commit --allow-empty -m "Initial commit for agent workspace"', { stdio: 'ignore' });
         }
+
+        try { execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' }); } catch (e) {}
+        if (fs.existsSync('.agent-workspace')) {
+          fs.rmSync('.agent-workspace', { recursive: true, force: true });
+        }
+        execSync('git worktree add -d .agent-workspace -f', { stdio: 'ignore' });
+        getLogger().info('Created isolated git worktree at .agent-workspace');
+      } catch (e: any) {
+        getLogger().error(`Failed to setup worktree: ${e.message}`);
       }
     },
     applyWorktreePatch: () => {
@@ -90,8 +91,11 @@ export const orchestratorMachine = setup({
     removeWorktree: () => {
       try {
         execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
-        getLogger().info('Cleaned up failed .agent-workspace worktree.');
       } catch (e) {}
+      if (fs.existsSync('.agent-workspace')) {
+        try { fs.rmSync('.agent-workspace', { recursive: true, force: true }); } catch (e) {}
+      }
+      getLogger().info('Cleaned up failed .agent-workspace worktree.');
     },
     compressHistoryIfNeeded: assign(({ context }) => {
       const result = getCompressor().compressIfNeeded(context.executionHistory);
