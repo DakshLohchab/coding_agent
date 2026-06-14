@@ -4,6 +4,18 @@ export interface IArchitectAgent {
   analyzeAndPlan(context: AgentContext): Promise<string>;
 }
 
+export interface IThinkingAgent {
+  think(context: AgentContext): Promise<string>;
+}
+
+export interface IPlanningAgent {
+  plan(context: AgentContext): Promise<string>;
+}
+
+export interface IBuildingAgent {
+  build(context: AgentContext): Promise<{ success: boolean; logs: string }>;
+}
+
 export interface IDebateAgent {
   debateAndConverge(context: AgentContext): Promise<string>;
 }

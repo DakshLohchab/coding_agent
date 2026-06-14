@@ -3,6 +3,9 @@ import { container } from 'tsyringe';
 
 import { Logger } from '../services/logger.js';
 import { ArchitectAgent } from '../agents/architect.js';
+import { ThinkingAgent } from '../agents/thinking.js';
+import { PlanningAgent } from '../agents/planning.js';
+import { BuildingAgent } from '../agents/building.js';
 import { ExecutionAgent } from '../agents/executor.js';
 import { VerificationAgent } from '../agents/verifier.js';
 import { DebateAgent } from '../agents/debate.js';
@@ -54,8 +57,11 @@ container.registerSingleton(RAGService);
 container.registerSingleton(FileWatcherDaemon);
 
 // Agents
+container.register('IThinkingAgent', { useClass: ThinkingAgent });
+container.register('IPlanningAgent', { useClass: PlanningAgent });
 container.register('IArchitectAgent', { useClass: ArchitectAgent });
 container.register('IExecutionAgent', { useClass: ExecutionAgent });
+container.register('IBuildingAgent', { useClass: BuildingAgent });
 container.register('IVerificationAgent', { useClass: VerificationAgent });
 container.register('IDebateAgent', { useClass: DebateAgent });
 

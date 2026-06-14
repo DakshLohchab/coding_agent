@@ -1,8 +1,10 @@
 export interface AgentContext {
   prompt: string;
   llmModel: string;
+  thoughts: string | null;
   plan: string | null;
   codeDiff: string | null;
+  buildLogs: string | null;
   verificationLogs: string | null;
   compilationFailures: number;
   error: Error | null;

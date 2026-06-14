@@ -75,8 +75,10 @@ export const orchestratorMachine = setup({
   context: {
     prompt: '',
     llmModel: 'openrouter',
+    thoughts: null,
     plan: null,
     codeDiff: null,
+    buildLogs: null,
     verificationLogs: null,
     compilationFailures: 0,
     error: null,
