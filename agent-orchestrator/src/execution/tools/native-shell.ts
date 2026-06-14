@@ -1,5 +1,6 @@
 import { injectable, inject } from 'tsyringe';
 import { spawn } from 'child_process';
+import { platform } from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ITool, JSONSchema } from '../tool-registry.js';
@@ -38,12 +39,13 @@ export class NativeShellTool implements ITool {
 
     let proc: any;
     try {
-      proc = spawn('powershell.exe', [
-        '-NoProfile', 
-        '-NonInteractive', 
-        '-Command', 
-        args.script
-      ], { cwd });
+      const isWin = platform() === 'win32';
+      const shellCmd = isWin ? 'powershell.exe' : '/bin/bash';
+      const shellArgs = isWin 
+        ? ['-NoProfile', '-NonInteractive', '-Command', args.script]
+        : ['-c', args.script];
+      
+      proc = spawn(shellCmd, shellArgs, { cwd });
     } catch (spawnErr) {
       this.logger.error('NativeShell failed to spawn process', spawnErr);
       return { success: false, error: (spawnErr as Error).message };

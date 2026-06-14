@@ -95,7 +95,15 @@ export class ConfigService {
 
     const apiKey = await rl.question(`\nPlease paste your API key for ${provider}: `);
     
-    this.saveConfig({ provider, apiKey: apiKey.trim() });
+    let modelName: string | undefined;
+    if (provider === 'Gemini API' || provider === 'OpenRouter' || 
+        provider === 'OpenAI' || provider === 'Anthropic Claude') {
+      const modelInput = await rl.question(
+        `\nOptional: Enter model name (press Enter to use default): `
+      );
+      if (modelInput.trim()) modelName = modelInput.trim();
+    }
+    this.saveConfig({ provider, apiKey: apiKey.trim(), modelName });
     console.log(`\n[Success] Configuration saved to ${this.configPath}\n`);
     rl.close();
   }

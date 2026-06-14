@@ -50,52 +50,13 @@ export const orchestratorMachine = setup({
       }
     },
     setupWorktree: () => {
-      try {
-        // Ensure it is a git repository with at least one commit
-        try {
-          execSync('git rev-parse HEAD', { stdio: 'ignore' });
-        } catch (e) {
-          execSync('git init', { stdio: 'ignore' });
-          try {
-            execSync('git config user.name "OpenClaw" && git config user.email "openclaw@local"', { stdio: 'ignore' });
-          } catch (configErr) {}
-          execSync('git add .', { stdio: 'ignore' });
-          execSync('git commit --allow-empty -m "Initial commit for agent workspace"', { stdio: 'ignore' });
-        }
-
-        try { execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' }); } catch (e) {}
-        if (fs.existsSync('.agent-workspace')) {
-          fs.rmSync('.agent-workspace', { recursive: true, force: true });
-        }
-        execSync('git worktree add -d .agent-workspace -f', { stdio: 'ignore' });
-        getLogger().info('Created isolated git worktree at .agent-workspace');
-      } catch (e: any) {
-        getLogger().error(`Failed to setup worktree: ${e.message}`);
-      }
+      getLogger().info('Skipping worktree — writing directly to working directory.');
     },
     applyWorktreePatch: () => {
-      try {
-        execSync('git -C .agent-workspace add -A');
-        const diff = execSync('git -C .agent-workspace diff HEAD').toString();
-        if (diff.trim()) {
-          fs.writeFileSync('patch.diff', diff);
-          execSync('git apply patch.diff');
-          fs.unlinkSync('patch.diff');
-        }
-        execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
-        getLogger().info('Successfully merged worktree patch and cleaned up.');
-      } catch (e: any) {
-        getLogger().error(`Failed to merge worktree patch: ${e.message}`);
-      }
+      getLogger().info('Files already written to disk during execution.');
     },
     removeWorktree: () => {
-      try {
-        execSync('git worktree remove .agent-workspace --force', { stdio: 'ignore' });
-      } catch (e) {}
-      if (fs.existsSync('.agent-workspace')) {
-        try { fs.rmSync('.agent-workspace', { recursive: true, force: true }); } catch (e) {}
-      }
-      getLogger().info('Cleaned up failed .agent-workspace worktree.');
+      getLogger().info('No worktree to remove.');
     },
     compressHistoryIfNeeded: assign(({ context }) => {
       const result = getCompressor().compressIfNeeded(context.executionHistory);

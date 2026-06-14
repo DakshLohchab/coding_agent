@@ -132,12 +132,13 @@ export class ExecutionAgent implements IExecutionAgent {
         
         let finalOutput = '';
         for (const vf of virtualFiles) {
-          const workspacePath = path.join('.agent-workspace', vf.path);
-          const dir = path.dirname(workspacePath);
+          const targetPath = path.join(process.cwd(), vf.path);
+          const dir = path.dirname(targetPath);
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
           }
-          fs.writeFileSync(workspacePath, vf.content);
+          fs.writeFileSync(targetPath, vf.content, 'utf8');
+          this.logger.info(`Executor: Wrote file to ${targetPath}`);
           finalOutput += `<file path="${vf.path}">\n${vf.content}\n</file>\n`;
         }
         return finalOutput;
@@ -179,6 +180,78 @@ export class ExecutionAgent implements IExecutionAgent {
       return data.choices[0].message;
     }
     
+    if (config.provider === 'Anthropic Claude') {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': config.apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: config.modelName || 'claude-sonnet-4-6',
+          max_tokens: 8096,
+          system: messages.find((m: any) => m.role === 'system')?.content || '',
+          messages: messages.filter((m: any) => m.role !== 'system'),
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Anthropic API error: ${response.status} - ${errText}`);
+      }
+      const data = await response.json();
+      return {
+        role: 'assistant',
+        content: data.content?.[0]?.text || ''
+      };
+    }
+
+    if (config.provider === 'Gemini API') {
+      const model = config.modelName || 'gemini-2.0-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.apiKey}`;
+      const systemMsg = messages.find((m: any) => m.role === 'system')?.content || '';
+      const userMessages = messages.filter((m: any) => m.role !== 'system');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: systemMsg ? { parts: [{ text: systemMsg }] } : undefined,
+          contents: userMessages.map((m: any) => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
+          })),
+          generationConfig: { maxOutputTokens: 8096 }
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini API error: ${response.status} - ${errText}`);
+      }
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return { role: 'assistant', content: text };
+    }
+
+    if (config.provider === 'OpenAI') {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: config.modelName || 'gpt-4o',
+          messages: messages,
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenAI API error: ${response.status} - ${errText}`);
+      }
+      const data = await response.json();
+      return data.choices[0].message;
+    }
+
     return this.mockLLMCall(messages, tools, iteration);
   }
 

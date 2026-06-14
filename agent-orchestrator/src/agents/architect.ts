@@ -38,22 +38,19 @@ You must process tasks through the four rigid engineering phases defined in your
 4. DEBATING: If verification fails, cross-examine alternative strategies internally.
 
 OUTPUT FORMAT PROTOCOL
-Your output must consist ONLY of a valid, single JSON object containing the tool execution details. No markdown code blocks unless explicitly required by the parser interface.
-
-Expected Schema Format:
+When generating code or files, you MUST use the following XML-like structure:
+<file path="relative/path/to/file.ext">
+// file contents here
+</file>
+You may output multiple <file> blocks. Do not use standard markdown code blocks.
+If you need to execute a tool, output a single JSON object:
 {
   "phase": "architecting" | "executing" | "verifying" | "debating",
-  "thought": "Short, single-sentence technical state log",
+  "thought": "Short technical log",
   "tool": "native_shell" | "atomic_git" | "none",
-  "arguments": {
-    "cmd": "string_command_here"
-  }
+  "arguments": { "cmd": "..." }
 }
-
-EXAMPLE RESPONSE TO USER REQUEST:
-{"phase":"executing","thought":"Writing portfolio layout to index.html via native shell","tool":"native_shell","arguments":{"cmd":"echo '<html>...</html>' > index.html"}}
-
-If no tool execution is required during a phase transition, set "tool" to "none". Obey these constraints blindly. Failure to output strict, machine-parseable schema format halts the pipeline.`;
+If no tool execution is required, simply output the <file> blocks.`;
 
     const messages: any[] = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -190,6 +187,78 @@ If no tool execution is required during a phase transition, set "tool" to "none"
            content: content
          };
       }
+    }
+
+    if (config.provider === 'Anthropic Claude') {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': config.apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: config.modelName || 'claude-sonnet-4-6',
+          max_tokens: 8096,
+          system: messages.find((m: any) => m.role === 'system')?.content || '',
+          messages: messages.filter((m: any) => m.role !== 'system'),
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Anthropic API error: ${response.status} - ${errText}`);
+      }
+      const data = await response.json();
+      return {
+        role: 'assistant',
+        content: data.content?.[0]?.text || ''
+      };
+    }
+
+    if (config.provider === 'Gemini API') {
+      const model = config.modelName || 'gemini-2.0-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.apiKey}`;
+      const systemMsg = messages.find((m: any) => m.role === 'system')?.content || '';
+      const userMessages = messages.filter((m: any) => m.role !== 'system');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: systemMsg ? { parts: [{ text: systemMsg }] } : undefined,
+          contents: userMessages.map((m: any) => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
+          })),
+          generationConfig: { maxOutputTokens: 8096 }
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini API error: ${response.status} - ${errText}`);
+      }
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return { role: 'assistant', content: text };
+    }
+
+    if (config.provider === 'OpenAI') {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: config.modelName || 'gpt-4o',
+          messages: messages,
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenAI API error: ${response.status} - ${errText}`);
+      }
+      const data = await response.json();
+      return data.choices[0].message;
     }
     
     // Fallback to mock for now if other providers aren't implemented yet
