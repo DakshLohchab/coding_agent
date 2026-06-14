@@ -16,6 +16,10 @@ import { FileWatcherDaemon } from '../intelligence/file-watcher.js';
 import { ToolRegistry } from '../execution/tool-registry.js';
 import { NativeShellTool } from '../execution/tools/native-shell.js';
 import { AtomicGitTool } from '../execution/tools/atomic-git.js';
+import { FileWriterTool } from '../execution/tools/file-writer.js';
+import { DirectoryCreatorTool } from '../execution/tools/directory-creator.js';
+import { FileReaderTool } from '../execution/tools/file-reader.js';
+import { PatchFileTool } from '../execution/tools/patch-file.js';
 
 import { IOLayer } from '../daemon/io-layer.js';
 import { CollisionDetector } from '../daemon/collision-detector.js';
@@ -37,6 +41,10 @@ container.registerSingleton(CollisionDetector);
 container.registerSingleton(ToolRegistry);
 container.registerSingleton(NativeShellTool);
 container.registerSingleton(AtomicGitTool);
+container.registerSingleton(FileWriterTool);
+container.registerSingleton(DirectoryCreatorTool);
+container.registerSingleton(FileReaderTool);
+container.registerSingleton(PatchFileTool);
 
 // Intelligence Layer
 container.registerSingleton(ASTParser);

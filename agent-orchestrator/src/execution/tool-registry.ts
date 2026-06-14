@@ -1,4 +1,10 @@
-import { injectable } from 'tsyringe';
+import { injectable, inject } from 'tsyringe';
+import { NativeShellTool } from './tools/native-shell.js';
+import { AtomicGitTool } from './tools/atomic-git.js';
+import { FileWriterTool } from './tools/file-writer.js';
+import { DirectoryCreatorTool } from './tools/directory-creator.js';
+import { FileReaderTool } from './tools/file-reader.js';
+import { PatchFileTool } from './tools/patch-file.js';
 
 export interface JSONSchema {
   type: string;
@@ -16,6 +22,22 @@ export interface ITool {
 @injectable()
 export class ToolRegistry {
   private tools: Map<string, ITool> = new Map();
+
+  constructor(
+    @inject(NativeShellTool) nativeShell: NativeShellTool,
+    @inject(AtomicGitTool) atomicGit: AtomicGitTool,
+    @inject(FileWriterTool) fileWriter: FileWriterTool,
+    @inject(DirectoryCreatorTool) dirCreator: DirectoryCreatorTool,
+    @inject(FileReaderTool) fileReader: FileReaderTool,
+    @inject(PatchFileTool) patchFile: PatchFileTool
+  ) {
+    this.registerTool(nativeShell);
+    this.registerTool(atomicGit);
+    this.registerTool(fileWriter);
+    this.registerTool(dirCreator);
+    this.registerTool(fileReader);
+    this.registerTool(patchFile);
+  }
 
   public registerTool(tool: ITool): void {
     this.tools.set(tool.name, tool);
