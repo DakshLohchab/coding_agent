@@ -9,12 +9,14 @@ import { BuildingAgent } from '../agents/building.js';
 import { ExecutionAgent } from '../agents/executor.js';
 import { VerificationAgent } from '../agents/verifier.js';
 import { DebateAgent } from '../agents/debate.js';
+import { ParallelExecutor } from '../agents/parallel-executor.js';
 
 import { ASTParser } from '../intelligence/ast-parser.js';
 import { VectorStore } from '../intelligence/vector-store.js';
 import { Indexer } from '../intelligence/indexer.js';
 import { RAGService } from '../intelligence/rag-service.js';
 import { FileWatcherDaemon } from '../intelligence/file-watcher.js';
+import { MemoryStore } from '../intelligence/memory-store.js';
 
 import { ToolRegistry } from '../execution/tool-registry.js';
 import { NativeShellTool } from '../execution/tools/native-shell.js';
@@ -29,12 +31,14 @@ import { CollisionDetector } from '../daemon/collision-detector.js';
 import { EventBroker } from '../services/event-broker.js';
 import { ContextCompressor } from '../services/context-compressor.js';
 import { ConfigService } from '../services/config.js';
+import { LlmValidatorService } from '../services/llm-validator.js';
 
 // Core Services
 container.registerSingleton('ILogger', Logger);
 container.registerSingleton(EventBroker);
 container.registerSingleton(ContextCompressor);
 container.registerSingleton(ConfigService);
+container.registerSingleton(LlmValidatorService);
 
 // Daemon Layer
 container.registerSingleton(IOLayer);
@@ -55,6 +59,7 @@ container.registerSingleton(VectorStore);
 container.registerSingleton(Indexer);
 container.registerSingleton(RAGService);
 container.registerSingleton(FileWatcherDaemon);
+container.registerSingleton(MemoryStore);
 
 // Agents
 container.register('IThinkingAgent', { useClass: ThinkingAgent });
@@ -64,5 +69,6 @@ container.register('IExecutionAgent', { useClass: ExecutionAgent });
 container.register('IBuildingAgent', { useClass: BuildingAgent });
 container.register('IVerificationAgent', { useClass: VerificationAgent });
 container.register('IDebateAgent', { useClass: DebateAgent });
+container.registerSingleton(ParallelExecutor);
 
 export { container };

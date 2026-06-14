@@ -5,6 +5,7 @@ import Spinner from 'ink-spinner';
 import Gradient from 'ink-gradient';
 import { container } from '../di/container.js';
 import { ConfigService } from '../services/config.js';
+import { MemoryStore } from '../intelligence/memory-store.js';
 
 const COMMANDS = [
   { name: '/help', desc: 'Show developer commands' },
@@ -13,6 +14,8 @@ const COMMANDS = [
   { name: '/clear', desc: 'Wipe console buffer' },
   { name: '/index', desc: 'Force rebuild codebase AST map' },
   { name: '/sessions', desc: 'List historical execution traces' },
+  { name: '/memory', desc: 'Show memory stats and recent recalls' },
+  { name: '/forget', desc: 'Clear agent memory' },
   { name: '/exit', desc: 'Kill orchestrator daemon' }
 ];
 
@@ -29,7 +32,10 @@ const AGENT_SUB_SYSTEMS: Record<string, { label: string; color: string; glyph: s
 
 export const OrchestratorUI = ({ eventBroker, actor }: any) => {
   const configService = container.resolve(ConfigService);
+  const memoryStore = container.resolve(MemoryStore);
   const initialConfig = configService.getConfig();
+  const memStats = memoryStore.getStats();
+  const [memoryCount, setMemoryCount] = useState(memStats.total);
   const [currentModel, setCurrentModel] = useState(initialConfig?.modelName ? `${initialConfig.provider} (${initialConfig.modelName})` : (initialConfig?.provider || 'Not Set'));
   const [askingApiKeyFor, setAskingApiKeyFor] = useState('');
   const [askingModelNameFor, setAskingModelNameFor] = useState('');
@@ -73,10 +79,16 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
     };
     eventBroker.on('agent.thought', handleThought);
 
+    const handleSummary = (summary: any) => {
+      setMemoryCount(memoryStore.getStats().total);
+    };
+    eventBroker.on('agent.summary', handleSummary);
+
     return () => {
       eventBroker.off('agent.state_change', handleStateChange);
       eventBroker.off('agent.reply', handleReply);
       eventBroker.off('agent.thought', handleThought);
+      eventBroker.off('agent.summary', handleSummary);
     };
   }, [eventBroker]);
 
@@ -114,6 +126,17 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
     } else if (cmd === '/index') {
       setChatLog(log => [...log, { role: 'system', text: 'Reindexing workspace AST trees...', timestamp: new Date() }]);
       // Trigger background indexing logic
+    } else if (cmd === '/memory') {
+      const stats = memoryStore.getStats();
+      setChatLog(log => [...log, {
+        role: 'system',
+        text: `Memory: ${stats.total} total entries. By type: ${JSON.stringify(stats.byType)}`,
+        timestamp: new Date()
+      }]);
+    } else if (cmd === '/forget') {
+      memoryStore.clear();
+      setMemoryCount(0);
+      setChatLog(log => [...log, { role: 'system', text: 'Memory cleared.', timestamp: new Date() }]);
     } else {
       setChatLog(log => [...log, { role: 'system', text: `Executed sub-system task: ${cmd}`, timestamp: new Date() }]);
     }
@@ -306,6 +329,14 @@ export const OrchestratorUI = ({ eventBroker, actor }: any) => {
             <Box flexDirection="row" justifyContent="space-between">
               <Text color="gray">AST Code Nodes</Text>
               <Text color="white" bold>{astNodes.toLocaleString()}</Text>
+            </Box>
+            <Box flexDirection="row" justifyContent="space-between">
+              <Text color="gray">Memories</Text>
+              <Text color="white" bold>{memoryCount}</Text>
+            </Box>
+            <Box flexDirection="row" justifyContent="space-between">
+              <Text color="gray">Max Parallel</Text>
+              <Text color="white" bold>50 agents</Text>
             </Box>
             <Box flexDirection="row" justifyContent="space-between">
               <Text color="gray">Daemon Check</Text>

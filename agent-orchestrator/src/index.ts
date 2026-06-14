@@ -17,11 +17,14 @@ const eventBroker = container.resolve(EventBroker);
 
 async function bootstrap() {
   // Initialize Intelligence Layer
-  try {
-    await vectorStore.initialize();
-  } catch (err) {
-    logger.warn('ChromaDB unavailable — RAG context disabled. Continuing without it.');
-  }
+  await Promise.race([
+    vectorStore.initialize(),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('ChromaDB timeout')), 3000)
+    )
+  ]).catch(err => {
+    logger.warn(`ChromaDB unavailable (${err.message}) — RAG disabled. Continuing.`);
+  });
   fileWatcher.start(process.cwd() + '/src');
   fileWatcher.start(process.cwd() + '/skills');
 

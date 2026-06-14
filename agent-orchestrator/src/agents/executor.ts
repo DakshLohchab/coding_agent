@@ -5,6 +5,8 @@ import { ASTParser } from '../intelligence/ast-parser.js';
 import { ToolRegistry } from '../execution/tool-registry.js';
 import { ConfigService } from '../services/config.js';
 import { EventBroker } from '../services/event-broker.js';
+import { ParallelExecutor } from './parallel-executor.js';
+import { MemoryStore } from '../intelligence/memory-store.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -20,7 +22,9 @@ export class ExecutionAgent implements IExecutionAgent {
     @inject(ASTParser) private astParser: ASTParser,
     @inject(ToolRegistry) private toolRegistry: ToolRegistry,
     @inject(ConfigService) private configService: ConfigService,
-    @inject(EventBroker) private eventBroker: EventBroker
+    @inject(EventBroker) private eventBroker: EventBroker,
+    @inject(ParallelExecutor) private parallelExecutor: ParallelExecutor,
+    @inject(MemoryStore) private memoryStore: MemoryStore
   ) {}
 
   async generateCodeDiff(context: AgentContext): Promise<string> {
@@ -28,9 +32,16 @@ export class ExecutionAgent implements IExecutionAgent {
     this.logger.info(`Execution Agent: Generating structured multi-file blocks (Attempt ${context.compilationFailures + 1}) using [${config?.provider}]...`);
     if (!context.plan) throw new Error('No plan provided to Execution Agent.');
 
+    // Retrieve relevant memories to give the LLM prior context
+    const relevantMemories = this.memoryStore.search(context.prompt, 5);
+    const memoryContext = this.memoryStore.formatForContext(relevantMemories);
+    if (memoryContext) {
+      this.eventBroker.emitAsync('agent.thought', `Recalled ${relevantMemories.length} relevant past tasks from memory...`);
+    }
+
     const messages: any[] = [
       { role: 'system', content: 'You are the Execution Agent.' },
-      { role: 'user', content: `Execute Plan: ${context.plan}` }
+      { role: 'user', content: `${memoryContext ? memoryContext + '\n\n' : ''}Implement this plan completely. Output all files needed:\n\n${context.plan}\n\nOriginal user request: ${context.prompt}` }
     ];
     
     // Fetch JSON Schemas for 'native_shell', 'atomic_git', etc.
@@ -93,7 +104,23 @@ export class ExecutionAgent implements IExecutionAgent {
     }
 
     // Step 2: Extract virtual files from the structured blocks
-    const virtualFiles = this.extractVirtualFiles(rawLLMOutput);
+    let virtualFiles = this.extractVirtualFiles(rawLLMOutput);
+    
+    // For complex tasks (many files expected), use parallel execution
+    const isComplexTask = context.prompt.length > 100 ||
+                          context.prompt.toLowerCase().match(/website|app|project|system|full.?stack/);
+    if (isComplexTask && virtualFiles.length === 0) {
+      this.logger.info('Executor: Complex task detected. Switching to parallel execution...');
+      this.eventBroker.emitAsync('agent.thought', 'Launching parallel subagents for complex task...');
+      
+      const parallelResults = await this.parallelExecutor.executeParallel(
+        context.prompt,
+        context.plan || context.prompt,
+        10
+      );
+      
+      virtualFiles = parallelResults.flatMap(r => r.files);
+    }
     
     // Step 3 & 4: Ghost Sandboxing Loop (Syntax verification before disk I/O)
     let retryCount = 0;
@@ -141,6 +168,18 @@ export class ExecutionAgent implements IExecutionAgent {
           this.logger.info(`Executor: Wrote file to ${targetPath}`);
           finalOutput += `<file path="${vf.path}">\n${vf.content}\n</file>\n`;
         }
+        
+        // Store this successful execution in memory for future reference
+        const writtenPaths = virtualFiles.map(vf => vf.path);
+        this.memoryStore.store({
+          type: 'task',
+          prompt: context.prompt,
+          outcome: `Successfully created ${writtenPaths.length} files: ${writtenPaths.join(', ')}`,
+          filesCreated: writtenPaths,
+          provider: this.configService.getConfig()?.provider || 'unknown',
+          tags: this.extractTags(context.prompt)
+        });
+        
         return finalOutput;
       }
       retryCount++;
@@ -293,5 +332,15 @@ function processCode() {
       });
     }
     return files;
+  }
+
+  private extractTags(prompt: string): string[] {
+    const keywords = [
+      'website', 'react', 'python', 'api', 'database', 'game',
+      'cli', 'typescript', 'css', 'html', 'node', 'express',
+      'vue', 'next', 'vite', 'flask', 'django', 'rust', 'go'
+    ];
+    const lower = prompt.toLowerCase();
+    return keywords.filter(k => lower.includes(k));
   }
 }

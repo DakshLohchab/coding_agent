@@ -1,20 +1,26 @@
 import { setup, assign, fromPromise } from 'xstate';
 import { container } from '../di/container.js';
 import { AgentContext, AgentEvent } from '../types.js';
-import { IArchitectAgent, IExecutionAgent, IVerificationAgent, IDebateAgent, ILogger } from '../agents/interfaces.js';
+import { IArchitectAgent, IExecutionAgent, IVerificationAgent, IDebateAgent, ILogger, IThinkingAgent, IPlanningAgent, IBuildingAgent } from '../agents/interfaces.js';
 import { EventBroker } from '../services/event-broker.js';
 import { ContextCompressor } from '../services/context-compressor.js';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 
+import { LlmValidatorService } from '../services/llm-validator.js';
+
 // 1. Convert eager resolutions to Lazy Getters to prevent Tsyringe module race conditions
+const getThinking = () => container.resolve<IThinkingAgent>('IThinkingAgent');
+const getPlanning = () => container.resolve<IPlanningAgent>('IPlanningAgent');
 const getArchitect = () => container.resolve<IArchitectAgent>('IArchitectAgent');
 const getExecutor = () => container.resolve<IExecutionAgent>('IExecutionAgent');
+const getBuilding = () => container.resolve<IBuildingAgent>('IBuildingAgent');
 const getVerifier = () => container.resolve<IVerificationAgent>('IVerificationAgent');
 const getDebateAgent = () => container.resolve<IDebateAgent>('IDebateAgent');
 const getLogger = () => container.resolve<ILogger>('ILogger');
 const getEventBroker = () => container.resolve(EventBroker);
 const getCompressor = () => container.resolve(ContextCompressor);
+const getValidator = () => container.resolve(LlmValidatorService);
 
 export const orchestratorMachine = setup({
   types: {
@@ -23,11 +29,23 @@ export const orchestratorMachine = setup({
   },
   actors: {
     // 2. Resolve them safely inside the async actors
+    llmValidatorActor: fromPromise(async () => {
+      return await getValidator().validateConnection();
+    }),
+    thinkingActor: fromPromise(async ({ input }: { input: AgentContext }) => {
+      return await getThinking().think(input);
+    }),
+    planningActor: fromPromise(async ({ input }: { input: AgentContext }) => {
+      return await getPlanning().plan(input);
+    }),
     architectActor: fromPromise(async ({ input }: { input: AgentContext }) => {
       return await getArchitect().analyzeAndPlan(input);
     }),
     executorActor: fromPromise(async ({ input }: { input: AgentContext }) => {
       return await getExecutor().generateCodeDiff(input);
+    }),
+    buildingActor: fromPromise(async ({ input }: { input: AgentContext }) => {
+      return await getBuilding().build(input);
     }),
     verifierActor: fromPromise(async ({ input }: { input: AgentContext }) => {
       return await getVerifier().verify(input);
@@ -93,7 +111,7 @@ export const orchestratorMachine = setup({
       entry: [() => getEventBroker().emitAsync('agent.state_change', 'idle')],
       on: {
         START: {
-          target: 'architecting',
+          target: 'validating_llm',
           actions: [
             assign({
               prompt: ({ event }) => (event as Extract<AgentEvent, { type: 'START' }>).prompt,
@@ -106,6 +124,60 @@ export const orchestratorMachine = setup({
             'emitAgentMessage'
           ]
         }
+      }
+    },
+    validating_llm: {
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'validating_llm')],
+      invoke: {
+        src: 'llmValidatorActor',
+        onDone: {
+          target: 'thinking',
+          actions: [
+            assign({
+              executionHistory: ({ context }) => [...context.executionHistory, '[SYSTEM] LLM connection verified successfully.'],
+              lastAgentMessage: () => 'LLM configuration verified. Proceeding with task.'
+            }),
+            'emitAgentMessage',
+            'compressHistoryIfNeeded'
+          ]
+        },
+        onError: {
+          target: 'failed',
+          actions: [
+            assign({ error: ({ event }) => event.error as Error }),
+            () => getEventBroker().emitAsync('agent.reply', 'FATAL ERROR: Could not connect to LLM provider. Please check your config using the wizard.')
+          ]
+        }
+      }
+    },
+    thinking: {
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'thinking')],
+      invoke: {
+        src: 'thinkingActor',
+        input: ({ context }: any) => context,
+        onDone: {
+          target: 'planning',
+          actions: [
+            assign({ thoughts: ({ event }) => event.output as string }),
+            'compressHistoryIfNeeded'
+          ]
+        },
+        onError: { target: 'failed', actions: assign({ error: ({ event }) => event.error as Error }) }
+      }
+    },
+    planning: {
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'planning')],
+      invoke: {
+        src: 'planningActor',
+        input: ({ context }: any) => context,
+        onDone: {
+          target: 'architecting',
+          actions: [
+            assign({ plan: ({ event }) => event.output as string }),
+            'compressHistoryIfNeeded'
+          ]
+        },
+        onError: { target: 'failed', actions: assign({ error: ({ event }) => event.error as Error }) }
       }
     },
     architecting: {
@@ -140,12 +212,12 @@ export const orchestratorMachine = setup({
         src: 'executorActor',
         input: ({ context }: any) => context,
         onDone: {
-          target: 'verifying',
+          target: 'building',
           actions: [
             assign({ 
               codeDiff: ({ event }) => event.output as string,
               executionHistory: ({ context }) => [...context.executionHistory, '[EXECUTOR] Code diffs generated via NativeShell/AtomicGit.'],
-              lastAgentMessage: () => 'Execution finished generating code diffs; moving to verification.'
+              lastAgentMessage: () => 'Execution finished generating code diffs; moving to build step.'
             }),
             'emitAgentMessage',
             'compressHistoryIfNeeded'
@@ -155,6 +227,37 @@ export const orchestratorMachine = setup({
           target: 'failed',
           actions: assign({ error: ({ event }) => event.error as Error })
         }
+      }
+    },
+    building: {
+      entry: [() => getEventBroker().emitAsync('agent.state_change', 'building')],
+      invoke: {
+        src: 'buildingActor',
+        input: ({ context }: any) => context,
+        onDone: [
+          {
+            guard: ({ event }) => (event.output as any).success === true,
+            target: 'verifying',
+            actions: [
+              assign({ 
+                buildLogs: ({ event }: any) => (event.output as any).logs,
+                executionHistory: ({ context, event }: any) => [...context.executionHistory, `[BUILDER] Success: ${(event.output as any).logs}`]
+              }),
+              'compressHistoryIfNeeded'
+            ]
+          },
+          {
+            target: 'debating',
+            actions: [
+              assign({
+                buildLogs: ({ event }: any) => (event.output as any).logs,
+                executionHistory: ({ context, event }: any) => [...context.executionHistory, `[BUILDER] Failure: ${(event.output as any).logs}`]
+              }),
+              'compressHistoryIfNeeded'
+            ]
+          }
+        ],
+        onError: { target: 'failed', actions: assign({ error: ({ event }) => event.error as Error }) }
       }
     },
     verifying: {

@@ -5,6 +5,7 @@ import { RAGService } from '../intelligence/rag-service.js';
 import { ToolRegistry } from '../execution/tool-registry.js';
 import { ConfigService } from '../services/config.js';
 import { EventBroker } from '../services/event-broker.js';
+import { MemoryStore } from '../intelligence/memory-store.js';
 
 @injectable()
 export class ArchitectAgent implements IArchitectAgent {
@@ -13,7 +14,8 @@ export class ArchitectAgent implements IArchitectAgent {
     @inject(RAGService) private ragService: RAGService,
     @inject(ToolRegistry) private toolRegistry: ToolRegistry,
     @inject(ConfigService) private configService: ConfigService,
-    @inject(EventBroker) private eventBroker: EventBroker
+    @inject(EventBroker) private eventBroker: EventBroker,
+    @inject(MemoryStore) private memoryStore: MemoryStore
   ) {}
 
   async analyzeAndPlan(context: AgentContext): Promise<string> {
@@ -52,9 +54,15 @@ If you need to execute a tool, output a single JSON object:
 }
 If no tool execution is required, simply output the <file> blocks.`;
 
+    const relevantMemories = this.memoryStore.search(context.prompt, 5);
+    const memoryContext = this.memoryStore.formatForContext(relevantMemories);
+    if (memoryContext) {
+      this.eventBroker.emitAsync('agent.thought', `Architect: Recalled ${relevantMemories.length} related tasks from memory...`);
+    }
+
     const messages: any[] = [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Prompt: ${context.prompt}\nContext: ${ragContext}` }
+      { role: 'user', content: `${memoryContext ? memoryContext + '\n\n' : ''}Prompt: ${context.prompt}\nContext: ${ragContext}` }
     ];
 
     if (context.verificationLogs) {
