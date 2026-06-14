@@ -19,6 +19,7 @@ async function bootstrap() {
   // Initialize Intelligence Layer
   await vectorStore.initialize();
   fileWatcher.start(process.cwd() + '/src');
+  fileWatcher.start(process.cwd() + '/skills');
 
   const actor = createActor(orchestratorMachine as any) as any;
   actor.start();
